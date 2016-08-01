@@ -278,7 +278,7 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
         const Message& message2,
         const vector<SpecificField>& field_path) { }
 
-    // Report that an unkown field is ignored. (see comment above).
+    // Report that an unknown field is ignored. (see comment above).
     // Note this is a different function since the last SpecificField in field
     // path has a null field.  This could break existing Reporter.
     virtual void ReportUnknownFieldIgnored(
@@ -397,8 +397,15 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   // + n^3) in which n^3 is the time complexity of the maximum matching
   // algorithm.
   //
-  // REQUIRES:  field->is_repeated()
+  // REQUIRES:  field->is_repeated() and field not registered with TreatAsList
   void TreatAsSet(const FieldDescriptor* field);
+
+  // The elements of the given repeated field will be treated as a list for
+  // diffing purposes, so different orderings of the same elements will NOT be
+  // considered equal.
+  //
+  // REQUIRED: field->is_repeated() and field not registered with TreatAsSet
+  void TreatAsList(const FieldDescriptor* field);
 
   // The elements of the given repeated field will be treated as a map for
   // diffing purposes, with |key| being the map key.  Thus, elements with the
@@ -563,6 +570,12 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   // any differences found in human-readable form to the supplied
   // ZeroCopyOutputStream or Printer. If a printer is used, the delimiter
   // *must* be '$'.
+  //
+  // WARNING: this reporter does not necessarily flush its output until it is
+  // destroyed. As a result, it is not safe to assume the output is valid or
+  // complete until after you destroy the reporter. For example, if you use a
+  // StreamReporter to write to a StringOutputStream, the target string may
+  // contain uninitialized data until the reporter is destroyed.
   class LIBPROTOBUF_EXPORT StreamReporter : public Reporter {
    public:
     explicit StreamReporter(io::ZeroCopyOutputStream* output);
@@ -791,6 +804,7 @@ class LIBPROTOBUF_EXPORT MessageDifferencer {
   RepeatedFieldComparison repeated_field_comparison_;
 
   FieldSet set_fields_;
+  FieldSet list_fields_;
   // Keeps track of MapKeyComparators that are created within
   // MessageDifferencer. These MapKeyComparators should be deleted
   // before MessageDifferencer is destroyed.

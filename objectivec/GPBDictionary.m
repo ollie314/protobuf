@@ -31,7 +31,7 @@
 #import "GPBDictionary_PackagePrivate.h"
 
 #import "GPBCodedInputStream_PackagePrivate.h"
-#import "GPBCodedOutputStream.h"
+#import "GPBCodedOutputStream_PackagePrivate.h"
 #import "GPBDescriptor_PackagePrivate.h"
 #import "GPBMessage_PackagePrivate.h"
 #import "GPBUtilities_PackagePrivate.h"
@@ -44,6 +44,24 @@
 // it would be pretty simple to store all this data in CFDictionaries
 // directly.
 // ------------------------------------------------------------------
+
+// Direct access is use for speed, to avoid even internally declaring things
+// read/write, etc. The warning is enabled in the project to ensure code calling
+// protos can turn on -Wdirect-ivar-access without issues.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdirect-ivar-access"
+
+// Used to include code only visible to specific versions of the static
+// analyzer. Useful for wrapping code that only exists to silence the analyzer.
+// Determine the values you want to use for BEGIN_APPLE_BUILD_VERSION,
+// END_APPLE_BUILD_VERSION using:
+//   xcrun clang -dM -E -x c /dev/null | grep __apple_build_version__
+// Example usage:
+//  #if GPB_STATIC_ANALYZER_ONLY(5621, 5623) ... #endif
+#define GPB_STATIC_ANALYZER_ONLY(BEGIN_APPLE_BUILD_VERSION, END_APPLE_BUILD_VERSION) \
+    (defined(__clang_analyzer__) && \
+     (__apple_build_version__ >= BEGIN_APPLE_BUILD_VERSION && \
+      __apple_build_version__ <= END_APPLE_BUILD_VERSION))
 
 enum {
   kMapKeyFieldNumber = 1,
@@ -472,6 +490,8 @@ void GPBDictionaryReadEntry(id mapDictionary,
       key.valueString = [@"" retain];
     }
     if (GPBDataTypeIsObject(valueDataType) && value.valueString == nil) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wswitch-enum"
       switch (valueDataType) {
         case GPBDataTypeString:
           value.valueString = [@"" retain];
@@ -493,9 +513,23 @@ void GPBDictionaryReadEntry(id mapDictionary,
           // Nothing
           break;
       }
+#pragma clang diagnostic pop
     }
 
     if ((keyDataType == GPBDataTypeString) && GPBDataTypeIsObject(valueDataType)) {
+#if GPB_STATIC_ANALYZER_ONLY(6020053, 7000181)
+     // Limited to Xcode 6.4 - 7.2, are known to fail here. The upper end can
+     // be raised as needed for new Xcodes.
+     //
+     // This is only needed on a "shallow" analyze; on a "deep" analyze, the
+     // existing code path gets this correct. In shallow, the analyzer decides
+     // GPBDataTypeIsObject(valueDataType) is both false and true on a single
+     // path through this function, allowing nil to be used for the
+     // setObject:forKey:.
+     if (value.valueString == nil) {
+       value.valueString = [@"" retain];
+     }
+#endif
       // mapDictionary is an NSMutableDictionary
       [(NSMutableDictionary *)mapDictionary setObject:value.valueString
                                                forKey:key.valueString];
@@ -543,12 +577,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%DICTIONARY_KEY_TO_ENUM_IMPL(KEY_NAME, KEY_TYPE, KisP, Enum, int32_t, KHELPER)
 
 //%PDDM-DEFINE DICTIONARY_KEY_TO_POD_IMPL(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER)
-//%DICTIONARY_COMMON_IMPL(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, POD, value)
+//%DICTIONARY_COMMON_IMPL(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, POD, VALUE_NAME, value)
 
 //%PDDM-DEFINE DICTIONARY_POD_KEY_TO_OBJECT_IMPL(KEY_NAME, KEY_TYPE, VALUE_NAME, VALUE_TYPE)
-//%DICTIONARY_COMMON_IMPL(KEY_NAME, KEY_TYPE, , VALUE_NAME, VALUE_TYPE, POD, OBJECT, object)
+//%DICTIONARY_COMMON_IMPL(KEY_NAME, KEY_TYPE, , VALUE_NAME, VALUE_TYPE, POD, OBJECT, Object, object)
 
-//%PDDM-DEFINE DICTIONARY_COMMON_IMPL(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME)
+//%PDDM-DEFINE DICTIONARY_COMMON_IMPL(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, VNAME_VAR)
 //%#pragma mark - KEY_NAME -> VALUE_NAME
 //%
 //%@implementation GPB##KEY_NAME##VALUE_NAME##Dictionary {
@@ -557,24 +591,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%}
 //%
 //%+ (instancetype)dictionary {
-//%  return [[[self alloc] initWith##VNAME$u##s:NULL forKeys:NULL count:0] autorelease];
+//%  return [[[self alloc] initWith##VNAME##s:NULL forKeys:NULL count:0] autorelease];
 //%}
 //%
-//%+ (instancetype)dictionaryWith##VNAME$u##:(VALUE_TYPE)##VNAME
+//%+ (instancetype)dictionaryWith##VNAME##:(VALUE_TYPE)##VNAME_VAR
 //%                      ##VNAME$S##  forKey:(KEY_TYPE##KisP$S##KisP)key {
-//%  // Cast is needed so the compiler knows what class we are invoking initWith##VNAME$u##s:forKeys:count:
+//%  // Cast is needed so the compiler knows what class we are invoking initWith##VNAME##s:forKeys:count:
 //%  // on to get the type correct.
-//%  return [[(GPB##KEY_NAME##VALUE_NAME##Dictionary*)[self alloc] initWith##VNAME$u##s:&##VNAME
+//%  return [[(GPB##KEY_NAME##VALUE_NAME##Dictionary*)[self alloc] initWith##VNAME##s:&##VNAME_VAR
 //%               KEY_NAME$S VALUE_NAME$S                        ##VNAME$S##  forKeys:&key
 //%               KEY_NAME$S VALUE_NAME$S                        ##VNAME$S##    count:1] autorelease];
 //%}
 //%
-//%+ (instancetype)dictionaryWith##VNAME$u##s:(const VALUE_TYPE [])##VNAME##s
+//%+ (instancetype)dictionaryWith##VNAME##s:(const VALUE_TYPE [])##VNAME_VAR##s
 //%                      ##VNAME$S##  forKeys:(const KEY_TYPE##KisP$S##KisP [])keys
 //%                      ##VNAME$S##    count:(NSUInteger)count {
-//%  // Cast is needed so the compiler knows what class we are invoking initWith##VNAME$u##s:forKeys:count:
+//%  // Cast is needed so the compiler knows what class we are invoking initWith##VNAME##s:forKeys:count:
 //%  // on to get the type correct.
-//%  return [[(GPB##KEY_NAME##VALUE_NAME##Dictionary*)[self alloc] initWith##VNAME$u##s:##VNAME##s
+//%  return [[(GPB##KEY_NAME##VALUE_NAME##Dictionary*)[self alloc] initWith##VNAME##s:##VNAME_VAR##s
 //%               KEY_NAME$S VALUE_NAME$S                               forKeys:keys
 //%               KEY_NAME$S VALUE_NAME$S                                 count:count] autorelease];
 //%}
@@ -590,18 +624,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%}
 //%
 //%- (instancetype)init {
-//%  return [self initWith##VNAME$u##s:NULL forKeys:NULL count:0];
+//%  return [self initWith##VNAME##s:NULL forKeys:NULL count:0];
 //%}
 //%
-//%- (instancetype)initWith##VNAME$u##s:(const VALUE_TYPE [])##VNAME##s
+//%- (instancetype)initWith##VNAME##s:(const VALUE_TYPE [])##VNAME_VAR##s
 //%                ##VNAME$S##  forKeys:(const KEY_TYPE##KisP$S##KisP [])keys
 //%                ##VNAME$S##    count:(NSUInteger)count {
 //%  self = [super init];
 //%  if (self) {
 //%    _dictionary = [[NSMutableDictionary alloc] init];
-//%    if (count && VNAME##s && keys) {
+//%    if (count && VNAME_VAR##s && keys) {
 //%      for (NSUInteger i = 0; i < count; ++i) {
-//%        [_dictionary setObject:WRAPPED##VHELPER(VNAME##s[i]) forKey:WRAPPED##KHELPER(keys[i])];
+//%DICTIONARY_VALIDATE_VALUE_##VHELPER(VNAME_VAR##s[i], ______)##DICTIONARY_VALIDATE_KEY_##KHELPER(keys[i], ______)        [_dictionary setObject:WRAPPED##VHELPER(VNAME_VAR##s[i]) forKey:WRAPPED##KHELPER(keys[i])];
 //%      }
 //%    }
 //%  }
@@ -609,7 +643,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%}
 //%
 //%- (instancetype)initWithDictionary:(GPB##KEY_NAME##VALUE_NAME##Dictionary *)dictionary {
-//%  self = [self initWith##VNAME$u##s:NULL forKeys:NULL count:0];
+//%  self = [self initWith##VNAME##s:NULL forKeys:NULL count:0];
 //%  if (self) {
 //%    if (dictionary) {
 //%      [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -620,14 +654,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%
 //%- (instancetype)initWithCapacity:(NSUInteger)numItems {
 //%  #pragma unused(numItems)
-//%  return [self initWith##VNAME$u##s:NULL forKeys:NULL count:0];
+//%  return [self initWith##VNAME##s:NULL forKeys:NULL count:0];
 //%}
 //%
-//%DICTIONARY_IMMUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, )
+//%DICTIONARY_IMMUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, VNAME_VAR, )
 //%
 //%VALUE_FOR_KEY_##VHELPER(KEY_TYPE##KisP$S##KisP, VALUE_NAME, VALUE_TYPE, KHELPER)
 //%
-//%DICTIONARY_MUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, )
+//%DICTIONARY_MUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, VNAME_VAR, )
 //%
 //%@end
 //%
@@ -711,7 +745,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%    _validationFunc = (func != NULL ? func : DictDefault_IsValidValue);
 //%    if (count && rawValues && keys) {
 //%      for (NSUInteger i = 0; i < count; ++i) {
-//%        [_dictionary setObject:WRAPPED##VHELPER(rawValues[i]) forKey:WRAPPED##KHELPER(keys[i])];
+//%DICTIONARY_VALIDATE_KEY_##KHELPER(keys[i], ______)        [_dictionary setObject:WRAPPED##VHELPER(rawValues[i]) forKey:WRAPPED##KHELPER(keys[i])];
 //%      }
 //%    }
 //%  }
@@ -737,9 +771,9 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  return [self initWithValidationFunction:func rawValues:NULL forKeys:NULL count:0];
 //%}
 //%
-//%DICTIONARY_IMMUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, value, Raw)
+//%DICTIONARY_IMMUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, Value, value, Raw)
 //%
-//%- (BOOL)valueForKey:(KEY_TYPE##KisP$S##KisP)key value:(VALUE_TYPE *)value {
+//%- (BOOL)getEnum:(VALUE_TYPE *)value forKey:(KEY_TYPE##KisP$S##KisP)key {
 //%  NSNumber *wrapped = [_dictionary objectForKey:WRAPPED##KHELPER(key)];
 //%  if (wrapped && value) {
 //%    VALUE_TYPE result = UNWRAP##VALUE_NAME(wrapped);
@@ -751,7 +785,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  return (wrapped != NULL);
 //%}
 //%
-//%- (BOOL)valueForKey:(KEY_TYPE##KisP$S##KisP)key rawValue:(VALUE_TYPE *)rawValue {
+//%- (BOOL)getRawValue:(VALUE_TYPE *)rawValue forKey:(KEY_TYPE##KisP$S##KisP)key {
 //%  NSNumber *wrapped = [_dictionary objectForKey:WRAPPED##KHELPER(key)];
 //%  if (wrapped && rawValue) {
 //%    *rawValue = UNWRAP##VALUE_NAME(wrapped);
@@ -759,7 +793,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  return (wrapped != NULL);
 //%}
 //%
-//%- (void)enumerateKeysAndValuesUsingBlock:
+//%- (void)enumerateKeysAndEnumsUsingBlock:
 //%    (void (^)(KEY_TYPE KisP##key, VALUE_TYPE value, BOOL *stop))block {
 //%  GPBEnumValidationFunc func = _validationFunc;
 //%  [_dictionary enumerateKeysAndObjectsUsingBlock:^(ENUM_TYPE##KHELPER(KEY_TYPE)##aKey,
@@ -773,10 +807,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  }];
 //%}
 //%
-//%DICTIONARY_MUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, value, Raw)
+//%DICTIONARY_MUTABLE_CORE2(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, Value, Enum, value, Raw)
 //%
-//%- (void)setValue:(VALUE_TYPE)value forKey:(KEY_TYPE##KisP$S##KisP)key {
-//%  if (!_validationFunc(value)) {
+//%- (void)setEnum:(VALUE_TYPE)value forKey:(KEY_TYPE##KisP$S##KisP)key {
+//%DICTIONARY_VALIDATE_KEY_##KHELPER(key, )  if (!_validationFunc(value)) {
 //%    [NSException raise:NSInvalidArgumentException
 //%                format:@"GPB##KEY_NAME##VALUE_NAME##Dictionary: Attempt to set an unknown enum value (%d)",
 //%                       value];
@@ -791,7 +825,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%@end
 //%
 
-//%PDDM-DEFINE DICTIONARY_IMMUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, ACCESSOR_NAME)
+//%PDDM-DEFINE DICTIONARY_IMMUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, VNAME_VAR, ACCESSOR_NAME)
 //%- (void)dealloc {
 //%  NSAssert(!_autocreator,
 //%           @"%@: Autocreator must be cleared before release, autocreator: %@",
@@ -804,14 +838,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  return [[GPB##KEY_NAME##VALUE_NAME##Dictionary allocWithZone:zone] initWithDictionary:self];
 //%}
 //%
-//%- (BOOL)isEqual:(GPB##KEY_NAME##VALUE_NAME##Dictionary *)other {
+//%- (BOOL)isEqual:(id)other {
 //%  if (self == other) {
 //%    return YES;
 //%  }
 //%  if (![other isKindOfClass:[GPB##KEY_NAME##VALUE_NAME##Dictionary class]]) {
 //%    return NO;
 //%  }
-//%  return [_dictionary isEqual:other->_dictionary];
+//%  GPB##KEY_NAME##VALUE_NAME##Dictionary *otherDictionary = other;
+//%  return [_dictionary isEqual:otherDictionary->_dictionary];
 //%}
 //%
 //%- (NSUInteger)hash {
@@ -826,12 +861,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  return _dictionary.count;
 //%}
 //%
-//%- (void)enumerateKeysAnd##ACCESSOR_NAME##VNAME$u##sUsingBlock:
-//%    (void (^)(KEY_TYPE KisP##key, VALUE_TYPE VNAME, BOOL *stop))block {
+//%- (void)enumerateKeysAnd##ACCESSOR_NAME##VNAME##sUsingBlock:
+//%    (void (^)(KEY_TYPE KisP##key, VALUE_TYPE VNAME_VAR, BOOL *stop))block {
 //%  [_dictionary enumerateKeysAndObjectsUsingBlock:^(ENUM_TYPE##KHELPER(KEY_TYPE)##aKey,
-//%                                                   ENUM_TYPE##VHELPER(VALUE_TYPE)##a##VNAME$u,
+//%                                                   ENUM_TYPE##VHELPER(VALUE_TYPE)##a##VNAME_VAR$u,
 //%                                                   BOOL *stop) {
-//%      block(UNWRAP##KEY_NAME(aKey), UNWRAP##VALUE_NAME(a##VNAME$u), stop);
+//%      block(UNWRAP##KEY_NAME(aKey), UNWRAP##VALUE_NAME(a##VNAME_VAR$u), stop);
 //%  }];
 //%}
 //%
@@ -845,11 +880,11 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  GPBDataType keyDataType = field.mapKeyDataType;
 //%  __block size_t result = 0;
 //%  [_dictionary enumerateKeysAndObjectsUsingBlock:^(ENUM_TYPE##KHELPER(KEY_TYPE)##aKey,
-//%                                                   ENUM_TYPE##VHELPER(VALUE_TYPE)##a##VNAME$u##,
+//%                                                   ENUM_TYPE##VHELPER(VALUE_TYPE)##a##VNAME_VAR$u##,
 //%                                                   BOOL *stop) {
 //%    #pragma unused(stop)
 //%    size_t msgSize = ComputeDict##KEY_NAME##FieldSize(UNWRAP##KEY_NAME(aKey), kMapKeyFieldNumber, keyDataType);
-//%    msgSize += ComputeDict##VALUE_NAME##FieldSize(UNWRAP##VALUE_NAME(a##VNAME$u), kMapValueFieldNumber, valueDataType);
+//%    msgSize += ComputeDict##VALUE_NAME##FieldSize(UNWRAP##VALUE_NAME(a##VNAME_VAR$u), kMapValueFieldNumber, valueDataType);
 //%    result += GPBComputeRawVarint32SizeForInteger(msgSize) + msgSize;
 //%  }];
 //%  size_t tagSize = GPBComputeWireFormatTagSize(GPBFieldNumber(field), GPBDataTypeMessage);
@@ -863,18 +898,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  GPBDataType keyDataType = field.mapKeyDataType;
 //%  uint32_t tag = GPBWireFormatMakeTag(GPBFieldNumber(field), GPBWireFormatLengthDelimited);
 //%  [_dictionary enumerateKeysAndObjectsUsingBlock:^(ENUM_TYPE##KHELPER(KEY_TYPE)##aKey,
-//%                                                   ENUM_TYPE##VHELPER(VALUE_TYPE)##a##VNAME$u,
+//%                                                   ENUM_TYPE##VHELPER(VALUE_TYPE)##a##VNAME_VAR$u,
 //%                                                   BOOL *stop) {
 //%    #pragma unused(stop)
 //%    // Write the tag.
 //%    [outputStream writeInt32NoTag:tag];
 //%    // Write the size of the message.
 //%    size_t msgSize = ComputeDict##KEY_NAME##FieldSize(UNWRAP##KEY_NAME(aKey), kMapKeyFieldNumber, keyDataType);
-//%    msgSize += ComputeDict##VALUE_NAME##FieldSize(UNWRAP##VALUE_NAME(a##VNAME$u), kMapValueFieldNumber, valueDataType);
+//%    msgSize += ComputeDict##VALUE_NAME##FieldSize(UNWRAP##VALUE_NAME(a##VNAME_VAR$u), kMapValueFieldNumber, valueDataType);
 //%    [outputStream writeInt32NoTag:(int32_t)msgSize];
 //%    // Write the fields.
 //%    WriteDict##KEY_NAME##Field(outputStream, UNWRAP##KEY_NAME(aKey), kMapKeyFieldNumber, keyDataType);
-//%    WriteDict##VALUE_NAME##Field(outputStream, UNWRAP##VALUE_NAME(a##VNAME$u), kMapValueFieldNumber, valueDataType);
+//%    WriteDict##VALUE_NAME##Field(outputStream, UNWRAP##VALUE_NAME(a##VNAME_VAR$u), kMapValueFieldNumber, valueDataType);
 //%  }];
 //%}
 //%
@@ -884,12 +919,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%}
 //%
 //%- (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-//%  [self enumerateKeysAnd##ACCESSOR_NAME##VNAME$u##sUsingBlock:^(KEY_TYPE KisP##key, VALUE_TYPE VNAME, BOOL *stop) {
+//%  [self enumerateKeysAnd##ACCESSOR_NAME##VNAME##sUsingBlock:^(KEY_TYPE KisP##key, VALUE_TYPE VNAME_VAR, BOOL *stop) {
 //%      #pragma unused(stop)
-//%      block(TEXT_FORMAT_OBJ##KEY_NAME(key), TEXT_FORMAT_OBJ##VALUE_NAME(VNAME));
+//%      block(TEXT_FORMAT_OBJ##KEY_NAME(key), TEXT_FORMAT_OBJ##VALUE_NAME(VNAME_VAR));
 //%  }];
 //%}
-//%PDDM-DEFINE DICTIONARY_MUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, ACCESSOR_NAME)
+//%PDDM-DEFINE DICTIONARY_MUTABLE_CORE(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, VNAME_VAR, ACCESSOR_NAME)
+//%DICTIONARY_MUTABLE_CORE2(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, VNAME, VNAME_VAR, ACCESSOR_NAME)
+//%PDDM-DEFINE DICTIONARY_MUTABLE_CORE2(KEY_NAME, KEY_TYPE, KisP, VALUE_NAME, VALUE_TYPE, KHELPER, VHELPER, VNAME, VNAME_REMOVE, VNAME_VAR, ACCESSOR_NAME)
 //%- (void)add##ACCESSOR_NAME##EntriesFromDictionary:(GPB##KEY_NAME##VALUE_NAME##Dictionary *)otherDictionary {
 //%  if (otherDictionary) {
 //%    [_dictionary addEntriesFromDictionary:otherDictionary->_dictionary];
@@ -899,14 +936,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  }
 //%}
 //%
-//%- (void)set##ACCESSOR_NAME##VNAME$u##:(VALUE_TYPE)VNAME forKey:(KEY_TYPE##KisP$S##KisP)key {
-//%  [_dictionary setObject:WRAPPED##VHELPER(VNAME) forKey:WRAPPED##KHELPER(key)];
+//%- (void)set##ACCESSOR_NAME##VNAME##:(VALUE_TYPE)VNAME_VAR forKey:(KEY_TYPE##KisP$S##KisP)key {
+//%DICTIONARY_VALIDATE_VALUE_##VHELPER(VNAME_VAR, )##DICTIONARY_VALIDATE_KEY_##KHELPER(key, )  [_dictionary setObject:WRAPPED##VHELPER(VNAME_VAR) forKey:WRAPPED##KHELPER(key)];
 //%  if (_autocreator) {
 //%    GPBAutocreatedDictionaryModified(_autocreator, self);
 //%  }
 //%}
 //%
-//%- (void)remove##VNAME$u##ForKey:(KEY_TYPE##KisP$S##KisP)aKey {
+//%- (void)remove##VNAME_REMOVE##ForKey:(KEY_TYPE##KisP$S##KisP)aKey {
 //%  [_dictionary removeObjectForKey:WRAPPED##KHELPER(aKey)];
 //%}
 //%
@@ -919,11 +956,11 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //
 
 //%PDDM-DEFINE DICTIONARY_BOOL_KEY_TO_POD_IMPL(VALUE_NAME, VALUE_TYPE)
-//%DICTIONARY_BOOL_KEY_TO_VALUE_IMPL(VALUE_NAME, VALUE_TYPE, POD, value)
+//%DICTIONARY_BOOL_KEY_TO_VALUE_IMPL(VALUE_NAME, VALUE_TYPE, POD, VALUE_NAME, value)
 //%PDDM-DEFINE DICTIONARY_BOOL_KEY_TO_OBJECT_IMPL(VALUE_NAME, VALUE_TYPE)
-//%DICTIONARY_BOOL_KEY_TO_VALUE_IMPL(VALUE_NAME, VALUE_TYPE, OBJECT, object)
+//%DICTIONARY_BOOL_KEY_TO_VALUE_IMPL(VALUE_NAME, VALUE_TYPE, OBJECT, Object, object)
 
-//%PDDM-DEFINE DICTIONARY_BOOL_KEY_TO_VALUE_IMPL(VALUE_NAME, VALUE_TYPE, HELPER, VNAME)
+//%PDDM-DEFINE DICTIONARY_BOOL_KEY_TO_VALUE_IMPL(VALUE_NAME, VALUE_TYPE, HELPER, VNAME, VNAME_VAR)
 //%#pragma mark - Bool -> VALUE_NAME
 //%
 //%@implementation GPBBool##VALUE_NAME##Dictionary {
@@ -932,24 +969,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%BOOL_DICT_HAS_STORAGE_##HELPER()}
 //%
 //%+ (instancetype)dictionary {
-//%  return [[[self alloc] initWith##VNAME$u##s:NULL forKeys:NULL count:0] autorelease];
+//%  return [[[self alloc] initWith##VNAME##s:NULL forKeys:NULL count:0] autorelease];
 //%}
 //%
-//%+ (instancetype)dictionaryWith##VNAME$u##:(VALUE_TYPE)VNAME
+//%+ (instancetype)dictionaryWith##VNAME##:(VALUE_TYPE)VNAME_VAR
 //%                      ##VNAME$S##  forKey:(BOOL)key {
-//%  // Cast is needed so the compiler knows what class we are invoking initWith##VNAME$u##s:forKeys:count:
+//%  // Cast is needed so the compiler knows what class we are invoking initWith##VNAME##s:forKeys:count:
 //%  // on to get the type correct.
-//%  return [[(GPBBool##VALUE_NAME##Dictionary*)[self alloc] initWith##VNAME$u##s:&##VNAME
+//%  return [[(GPBBool##VALUE_NAME##Dictionary*)[self alloc] initWith##VNAME##s:&##VNAME_VAR
 //%                    VALUE_NAME$S                        ##VNAME$S##  forKeys:&key
 //%                    VALUE_NAME$S                        ##VNAME$S##    count:1] autorelease];
 //%}
 //%
-//%+ (instancetype)dictionaryWith##VNAME$u##s:(const VALUE_TYPE [])##VNAME##s
+//%+ (instancetype)dictionaryWith##VNAME##s:(const VALUE_TYPE [])##VNAME_VAR##s
 //%                      ##VNAME$S##  forKeys:(const BOOL [])keys
 //%                      ##VNAME$S##    count:(NSUInteger)count {
-//%  // Cast is needed so the compiler knows what class we are invoking initWith##VNAME$u##s:forKeys:count:
+//%  // Cast is needed so the compiler knows what class we are invoking initWith##VNAME##s:forKeys:count:
 //%  // on to get the type correct.
-//%  return [[(GPBBool##VALUE_NAME##Dictionary*)[self alloc] initWith##VNAME$u##s:##VNAME##s
+//%  return [[(GPBBool##VALUE_NAME##Dictionary*)[self alloc] initWith##VNAME##s:##VNAME_VAR##s
 //%                    VALUE_NAME$S                        ##VNAME$S##  forKeys:keys
 //%                    VALUE_NAME$S                        ##VNAME$S##    count:count] autorelease];
 //%}
@@ -965,14 +1002,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%}
 //%
 //%- (instancetype)init {
-//%  return [self initWith##VNAME$u##s:NULL forKeys:NULL count:0];
+//%  return [self initWith##VNAME##s:NULL forKeys:NULL count:0];
 //%}
 //%
 //%BOOL_DICT_INITS_##HELPER(VALUE_NAME, VALUE_TYPE)
 //%
 //%- (instancetype)initWithCapacity:(NSUInteger)numItems {
 //%  #pragma unused(numItems)
-//%  return [self initWith##VNAME$u##s:NULL forKeys:NULL count:0];
+//%  return [self initWith##VNAME##s:NULL forKeys:NULL count:0];
 //%}
 //%
 //%BOOL_DICT_DEALLOC##HELPER()
@@ -981,19 +1018,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  return [[GPBBool##VALUE_NAME##Dictionary allocWithZone:zone] initWithDictionary:self];
 //%}
 //%
-//%- (BOOL)isEqual:(GPBBool##VALUE_NAME##Dictionary *)other {
+//%- (BOOL)isEqual:(id)other {
 //%  if (self == other) {
 //%    return YES;
 //%  }
 //%  if (![other isKindOfClass:[GPBBool##VALUE_NAME##Dictionary class]]) {
 //%    return NO;
 //%  }
-//%  if ((BOOL_DICT_W_HAS##HELPER(0, ) != BOOL_DICT_W_HAS##HELPER(0, other->)) ||
-//%      (BOOL_DICT_W_HAS##HELPER(1, ) != BOOL_DICT_W_HAS##HELPER(1, other->))) {
+//%  GPBBool##VALUE_NAME##Dictionary *otherDictionary = other;
+//%  if ((BOOL_DICT_W_HAS##HELPER(0, ) != BOOL_DICT_W_HAS##HELPER(0, otherDictionary->)) ||
+//%      (BOOL_DICT_W_HAS##HELPER(1, ) != BOOL_DICT_W_HAS##HELPER(1, otherDictionary->))) {
 //%    return NO;
 //%  }
-//%  if ((BOOL_DICT_W_HAS##HELPER(0, ) && (NEQ_##HELPER(_values[0], other->_values[0]))) ||
-//%      (BOOL_DICT_W_HAS##HELPER(1, ) && (NEQ_##HELPER(_values[1], other->_values[1])))) {
+//%  if ((BOOL_DICT_W_HAS##HELPER(0, ) && (NEQ_##HELPER(_values[0], otherDictionary->_values[0]))) ||
+//%      (BOOL_DICT_W_HAS##HELPER(1, ) && (NEQ_##HELPER(_values[1], otherDictionary->_values[1])))) {
 //%    return NO;
 //%  }
 //%  return YES;
@@ -1019,7 +1057,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  return (BOOL_DICT_W_HAS##HELPER(0, ) ? 1 : 0) + (BOOL_DICT_W_HAS##HELPER(1, ) ? 1 : 0);
 //%}
 //%
-//%BOOL_VALUE_FOR_KEY_##HELPER(VALUE_TYPE)
+//%BOOL_VALUE_FOR_KEY_##HELPER(VALUE_NAME, VALUE_TYPE)
 //%
 //%BOOL_SET_GPBVALUE_FOR_KEY_##HELPER(VALUE_NAME, VALUE_TYPE, VisP)
 //%
@@ -1032,8 +1070,8 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  }
 //%}
 //%
-//%- (void)enumerateKeysAnd##VNAME$u##sUsingBlock:
-//%    (void (^)(BOOL key, VALUE_TYPE VNAME, BOOL *stop))block {
+//%- (void)enumerateKeysAnd##VNAME##sUsingBlock:
+//%    (void (^)(BOOL key, VALUE_TYPE VNAME_VAR, BOOL *stop))block {
 //%  BOOL stop = NO;
 //%  if (BOOL_DICT_HAS##HELPER(0, )) {
 //%    block(NO, _values[0], &stop);
@@ -1090,7 +1128,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //
 
 //%PDDM-DEFINE VALUE_FOR_KEY_POD(KEY_TYPE, VALUE_NAME, VALUE_TYPE, KHELPER)
-//%- (BOOL)valueForKey:(KEY_TYPE)key value:(VALUE_TYPE *)value {
+//%- (BOOL)get##VALUE_NAME##:(nullable VALUE_TYPE *)value forKey:(KEY_TYPE)key {
 //%  NSNumber *wrapped = [_dictionary objectForKey:WRAPPED##KHELPER(key)];
 //%  if (wrapped && value) {
 //%    *value = UNWRAP##VALUE_NAME(wrapped);
@@ -1171,14 +1209,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%
 //%PDDM-DEFINE GPBVALUE_POD(VALUE_NAME)
 //%value##VALUE_NAME
+//%PDDM-DEFINE DICTIONARY_VALIDATE_VALUE_POD(VALUE_NAME, EXTRA_INDENT)
+// Empty
+//%PDDM-DEFINE DICTIONARY_VALIDATE_KEY_POD(KEY_NAME, EXTRA_INDENT)
+// Empty
 
 //%PDDM-DEFINE BOOL_DICT_HAS_STORAGE_POD()
 //%  BOOL _valueSet[2];
 //%
 //%PDDM-DEFINE BOOL_DICT_INITS_POD(VALUE_NAME, VALUE_TYPE)
-//%- (instancetype)initWithValues:(const VALUE_TYPE [])values
-//%                       forKeys:(const BOOL [])keys
-//%                         count:(NSUInteger)count {
+//%- (instancetype)initWith##VALUE_NAME##s:(const VALUE_TYPE [])values
+//%                 ##VALUE_NAME$S## forKeys:(const BOOL [])keys
+//%                 ##VALUE_NAME$S##   count:(NSUInteger)count {
 //%  self = [super init];
 //%  if (self) {
 //%    for (NSUInteger i = 0; i < count; ++i) {
@@ -1191,7 +1233,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%}
 //%
 //%- (instancetype)initWithDictionary:(GPBBool##VALUE_NAME##Dictionary *)dictionary {
-//%  self = [self initWithValues:NULL forKeys:NULL count:0];
+//%  self = [self initWith##VALUE_NAME##s:NULL forKeys:NULL count:0];
 //%  if (self) {
 //%    if (dictionary) {
 //%      for (int i = 0; i < 2; ++i) {
@@ -1217,8 +1259,8 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%BOOL_DICT_HASPOD(IDX, REF)
 //%PDDM-DEFINE BOOL_DICT_HASPOD(IDX, REF)
 //%REF##_valueSet[IDX]
-//%PDDM-DEFINE BOOL_VALUE_FOR_KEY_POD(VALUE_TYPE)
-//%- (BOOL)valueForKey:(BOOL)key value:(VALUE_TYPE *)value {
+//%PDDM-DEFINE BOOL_VALUE_FOR_KEY_POD(VALUE_NAME, VALUE_TYPE)
+//%- (BOOL)get##VALUE_NAME##:(VALUE_TYPE *)value forKey:(BOOL)key {
 //%  int idx = (key ? 1 : 0);
 //%  if (_valueSet[idx]) {
 //%    if (value) {
@@ -1250,7 +1292,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  }
 //%}
 //%
-//%- (void)setValue:(VALUE_TYPE)value forKey:(BOOL)key {
+//%- (void)set##VALUE_NAME:(VALUE_TYPE)value forKey:(BOOL)key {
 //%  int idx = (key ? 1 : 0);
 //%  _values[idx] = value;
 //%  _valueSet[idx] = YES;
@@ -1259,7 +1301,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  }
 //%}
 //%
-//%- (void)removeValueForKey:(BOOL)aKey {
+//%- (void)remove##VALUE_NAME##ForKey:(BOOL)aKey {
 //%  _valueSet[aKey ? 1 : 0] = NO;
 //%}
 //%
@@ -1363,7 +1405,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
 // Empty
 //%PDDM-DEFINE GPBVALUE_OBJECT(VALUE_NAME)
 //%valueString
-
+//%PDDM-DEFINE DICTIONARY_VALIDATE_VALUE_OBJECT(VALUE_NAME, EXTRA_INDENT)
+//%##EXTRA_INDENT$S##  if (!##VALUE_NAME) {
+//%##EXTRA_INDENT$S##    [NSException raise:NSInvalidArgumentException
+//%##EXTRA_INDENT$S##                format:@"Attempting to add nil object to a Dictionary"];
+//%##EXTRA_INDENT$S##  }
+//%
+//%PDDM-DEFINE DICTIONARY_VALIDATE_KEY_OBJECT(KEY_NAME, EXTRA_INDENT)
+//%##EXTRA_INDENT$S##  if (!##KEY_NAME) {
+//%##EXTRA_INDENT$S##    [NSException raise:NSInvalidArgumentException
+//%##EXTRA_INDENT$S##                format:@"Attempting to add nil key to a Dictionary"];
+//%##EXTRA_INDENT$S##  }
+//%
 
 //%PDDM-DEFINE BOOL_DICT_HAS_STORAGE_OBJECT()
 // Empty
@@ -1374,6 +1427,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%  self = [super init];
 //%  if (self) {
 //%    for (NSUInteger i = 0; i < count; ++i) {
+//%      if (!objects[i]) {
+//%        [NSException raise:NSInvalidArgumentException
+//%                    format:@"Attempting to add nil object to a Dictionary"];
+//%      }
 //%      int idx = keys[i] ? 1 : 0;
 //%      [_values[idx] release];
 //%      _values[idx] = (VALUE_TYPE)[objects[i] retain];
@@ -1405,7 +1462,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%(BOOL_DICT_HASOBJECT(IDX, REF))
 //%PDDM-DEFINE BOOL_DICT_HASOBJECT(IDX, REF)
 //%REF##_values[IDX] != nil
-//%PDDM-DEFINE BOOL_VALUE_FOR_KEY_OBJECT(VALUE_TYPE)
+//%PDDM-DEFINE BOOL_VALUE_FOR_KEY_OBJECT(VALUE_NAME, VALUE_TYPE)
 //%- (VALUE_TYPE)objectForKey:(BOOL)key {
 //%  return _values[key ? 1 : 0];
 //%}
@@ -1433,6 +1490,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 //%}
 //%
 //%- (void)setObject:(VALUE_TYPE)object forKey:(BOOL)key {
+//%  if (!object) {
+//%    [NSException raise:NSInvalidArgumentException
+//%                format:@"Attempting to add nil object to a Dictionary"];
+//%  }
 //%  int idx = (key ? 1 : 0);
 //%  [_values[idx] release];
 //%  _values[idx] = [object retain];
@@ -1468,24 +1529,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint32_t)value
-                             forKey:(uint32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32:(uint32_t)value
+                              forKey:(uint32_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32UInt32Dictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBUInt32UInt32Dictionary*)[self alloc] initWithUInt32s:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint32_t [])values
-                             forKeys:(const uint32_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32s:(const uint32_t [])values
+                              forKeys:(const uint32_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32UInt32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt32UInt32Dictionary*)[self alloc] initWithUInt32s:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -1501,12 +1562,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint32_t [])values
-                       forKeys:(const uint32_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt32s:(const uint32_t [])values
+                        forKeys:(const uint32_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -1520,7 +1581,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt32UInt32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -1531,7 +1592,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -1546,14 +1607,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32UInt32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32UInt32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32UInt32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32UInt32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -1568,7 +1630,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt32sUsingBlock:
     (void (^)(uint32_t key, uint32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -1626,13 +1688,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint32_t key, uint32_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt32sUsingBlock:^(uint32_t key, uint32_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%u", key], [NSString stringWithFormat:@"%u", value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint32_t)key value:(uint32_t *)value {
+- (BOOL)getUInt32:(nullable uint32_t *)value forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped unsignedIntValue];
@@ -1649,14 +1711,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint32_t)value forKey:(uint32_t)key {
+- (void)setUInt32:(uint32_t)value forKey:(uint32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint32_t)aKey {
+- (void)removeUInt32ForKey:(uint32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -1674,24 +1736,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int32_t)value
++ (instancetype)dictionaryWithInt32:(int32_t)value
                              forKey:(uint32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32Int32Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBUInt32Int32Dictionary*)[self alloc] initWithInt32s:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int32_t [])values
++ (instancetype)dictionaryWithInt32s:(const int32_t [])values
                              forKeys:(const uint32_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32Int32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt32Int32Dictionary*)[self alloc] initWithInt32s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -1707,10 +1769,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int32_t [])values
+- (instancetype)initWithInt32s:(const int32_t [])values
                        forKeys:(const uint32_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -1726,7 +1788,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt32Int32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -1737,7 +1799,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -1752,14 +1814,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32Int32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32Int32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32Int32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32Int32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -1774,7 +1837,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt32sUsingBlock:
     (void (^)(uint32_t key, int32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -1832,13 +1895,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint32_t key, int32_t value, BOOL *stop) {
+  [self enumerateKeysAndInt32sUsingBlock:^(uint32_t key, int32_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%u", key], [NSString stringWithFormat:@"%d", value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint32_t)key value:(int32_t *)value {
+- (BOOL)getInt32:(nullable int32_t *)value forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped intValue];
@@ -1855,14 +1918,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int32_t)value forKey:(uint32_t)key {
+- (void)setInt32:(int32_t)value forKey:(uint32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint32_t)aKey {
+- (void)removeInt32ForKey:(uint32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -1880,24 +1943,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint64_t)value
-                             forKey:(uint32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64:(uint64_t)value
+                              forKey:(uint32_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32UInt64Dictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBUInt32UInt64Dictionary*)[self alloc] initWithUInt64s:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint64_t [])values
-                             forKeys:(const uint32_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64s:(const uint64_t [])values
+                              forKeys:(const uint32_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32UInt64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt32UInt64Dictionary*)[self alloc] initWithUInt64s:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -1913,12 +1976,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint64_t [])values
-                       forKeys:(const uint32_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt64s:(const uint64_t [])values
+                        forKeys:(const uint32_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -1932,7 +1995,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt32UInt64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -1943,7 +2006,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -1958,14 +2021,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32UInt64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32UInt64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32UInt64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32UInt64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -1980,7 +2044,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt64sUsingBlock:
     (void (^)(uint32_t key, uint64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -2038,13 +2102,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint32_t key, uint64_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt64sUsingBlock:^(uint32_t key, uint64_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%u", key], [NSString stringWithFormat:@"%llu", value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint32_t)key value:(uint64_t *)value {
+- (BOOL)getUInt64:(nullable uint64_t *)value forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped unsignedLongLongValue];
@@ -2061,14 +2125,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint64_t)value forKey:(uint32_t)key {
+- (void)setUInt64:(uint64_t)value forKey:(uint32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint32_t)aKey {
+- (void)removeUInt64ForKey:(uint32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -2086,24 +2150,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int64_t)value
++ (instancetype)dictionaryWithInt64:(int64_t)value
                              forKey:(uint32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32Int64Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBUInt32Int64Dictionary*)[self alloc] initWithInt64s:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int64_t [])values
++ (instancetype)dictionaryWithInt64s:(const int64_t [])values
                              forKeys:(const uint32_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32Int64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt32Int64Dictionary*)[self alloc] initWithInt64s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -2119,10 +2183,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int64_t [])values
+- (instancetype)initWithInt64s:(const int64_t [])values
                        forKeys:(const uint32_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -2138,7 +2202,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt32Int64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -2149,7 +2213,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -2164,14 +2228,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32Int64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32Int64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32Int64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32Int64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -2186,7 +2251,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt64sUsingBlock:
     (void (^)(uint32_t key, int64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -2244,13 +2309,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint32_t key, int64_t value, BOOL *stop) {
+  [self enumerateKeysAndInt64sUsingBlock:^(uint32_t key, int64_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%u", key], [NSString stringWithFormat:@"%lld", value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint32_t)key value:(int64_t *)value {
+- (BOOL)getInt64:(nullable int64_t *)value forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped longLongValue];
@@ -2267,14 +2332,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int64_t)value forKey:(uint32_t)key {
+- (void)setInt64:(int64_t)value forKey:(uint32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint32_t)aKey {
+- (void)removeInt64ForKey:(uint32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -2292,24 +2357,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithBools:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(BOOL)value
-                             forKey:(uint32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBool:(BOOL)value
+                            forKey:(uint32_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32BoolDictionary*)[self alloc] initWithValues:&value
-                                                         forKeys:&key
-                                                           count:1] autorelease];
+  return [[(GPBUInt32BoolDictionary*)[self alloc] initWithBools:&value
+                                                        forKeys:&key
+                                                          count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const BOOL [])values
-                             forKeys:(const uint32_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBools:(const BOOL [])values
+                            forKeys:(const uint32_t [])keys
+                              count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32BoolDictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt32BoolDictionary*)[self alloc] initWithBools:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -2325,12 +2390,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const BOOL [])values
-                       forKeys:(const uint32_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithBools:(const BOOL [])values
+                      forKeys:(const uint32_t [])keys
+                        count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -2344,7 +2409,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt32BoolDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithBools:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -2355,7 +2420,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -2370,14 +2435,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32BoolDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32BoolDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32BoolDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32BoolDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -2392,7 +2458,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndBoolsUsingBlock:
     (void (^)(uint32_t key, BOOL value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -2450,13 +2516,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint32_t key, BOOL value, BOOL *stop) {
+  [self enumerateKeysAndBoolsUsingBlock:^(uint32_t key, BOOL value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%u", key], (value ? @"true" : @"false"));
   }];
 }
 
-- (BOOL)valueForKey:(uint32_t)key value:(BOOL *)value {
+- (BOOL)getBool:(nullable BOOL *)value forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped boolValue];
@@ -2473,14 +2539,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(BOOL)value forKey:(uint32_t)key {
+- (void)setBool:(BOOL)value forKey:(uint32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint32_t)aKey {
+- (void)removeBoolForKey:(uint32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -2498,24 +2564,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithFloats:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(float)value
++ (instancetype)dictionaryWithFloat:(float)value
                              forKey:(uint32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32FloatDictionary*)[self alloc] initWithValues:&value
+  return [[(GPBUInt32FloatDictionary*)[self alloc] initWithFloats:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const float [])values
++ (instancetype)dictionaryWithFloats:(const float [])values
                              forKeys:(const uint32_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32FloatDictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt32FloatDictionary*)[self alloc] initWithFloats:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -2531,10 +2597,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const float [])values
+- (instancetype)initWithFloats:(const float [])values
                        forKeys:(const uint32_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -2550,7 +2616,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt32FloatDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithFloats:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -2561,7 +2627,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -2576,14 +2642,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32FloatDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32FloatDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32FloatDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32FloatDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -2598,7 +2665,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndFloatsUsingBlock:
     (void (^)(uint32_t key, float value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -2656,13 +2723,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint32_t key, float value, BOOL *stop) {
+  [self enumerateKeysAndFloatsUsingBlock:^(uint32_t key, float value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%u", key], [NSString stringWithFormat:@"%.*g", FLT_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint32_t)key value:(float *)value {
+- (BOOL)getFloat:(nullable float *)value forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped floatValue];
@@ -2679,14 +2746,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(float)value forKey:(uint32_t)key {
+- (void)setFloat:(float)value forKey:(uint32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint32_t)aKey {
+- (void)removeFloatForKey:(uint32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -2704,24 +2771,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithDoubles:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(double)value
-                             forKey:(uint32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDouble:(double)value
+                              forKey:(uint32_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32DoubleDictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBUInt32DoubleDictionary*)[self alloc] initWithDoubles:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const double [])values
-                             forKeys:(const uint32_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDoubles:(const double [])values
+                              forKeys:(const uint32_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt32DoubleDictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt32DoubleDictionary*)[self alloc] initWithDoubles:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -2737,12 +2804,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const double [])values
-                       forKeys:(const uint32_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithDoubles:(const double [])values
+                        forKeys:(const uint32_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -2756,7 +2823,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt32DoubleDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithDoubles:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -2767,7 +2834,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -2782,14 +2849,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32DoubleDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32DoubleDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32DoubleDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32DoubleDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -2804,7 +2872,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndDoublesUsingBlock:
     (void (^)(uint32_t key, double value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -2862,13 +2930,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint32_t key, double value, BOOL *stop) {
+  [self enumerateKeysAndDoublesUsingBlock:^(uint32_t key, double value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%u", key], [NSString stringWithFormat:@"%.*lg", DBL_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint32_t)key value:(double *)value {
+- (BOOL)getDouble:(nullable double *)value forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped doubleValue];
@@ -2885,14 +2953,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(double)value forKey:(uint32_t)key {
+- (void)setDouble:(double)value forKey:(uint32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint32_t)aKey {
+- (void)removeDoubleForKey:(uint32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -3016,14 +3084,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32EnumDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32EnumDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32EnumDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32EnumDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -3114,7 +3183,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }];
 }
 
-- (BOOL)valueForKey:(uint32_t)key value:(int32_t *)value {
+- (BOOL)getEnum:(int32_t *)value forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     int32_t result = [wrapped intValue];
@@ -3126,7 +3195,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (BOOL)valueForKey:(uint32_t)key rawValue:(int32_t *)rawValue {
+- (BOOL)getRawValue:(int32_t *)rawValue forKey:(uint32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && rawValue) {
     *rawValue = [wrapped intValue];
@@ -3134,7 +3203,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndEnumsUsingBlock:
     (void (^)(uint32_t key, int32_t value, BOOL *stop))block {
   GPBEnumValidationFunc func = _validationFunc;
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
@@ -3164,7 +3233,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(uint32_t)aKey {
+- (void)removeEnumForKey:(uint32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -3172,7 +3241,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   [_dictionary removeAllObjects];
 }
 
-- (void)setValue:(int32_t)value forKey:(uint32_t)key {
+- (void)setEnum:(int32_t)value forKey:(uint32_t)key {
   if (!_validationFunc(value)) {
     [NSException raise:NSInvalidArgumentException
                 format:@"GPBUInt32EnumDictionary: Attempt to set an unknown enum value (%d)",
@@ -3239,6 +3308,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && objects && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!objects[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil object to a Dictionary"];
+        }
         [_dictionary setObject:objects[i] forKey:@(keys[i])];
       }
     }
@@ -3273,14 +3346,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt32ObjectDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt32ObjectDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt32ObjectDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt32ObjectDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -3397,6 +3471,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)setObject:(id)object forKey:(uint32_t)key {
+  if (!object) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil object to a Dictionary"];
+  }
   [_dictionary setObject:object forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
@@ -3424,24 +3502,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint32_t)value
-                             forKey:(int32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32:(uint32_t)value
+                              forKey:(int32_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32UInt32Dictionary*)[self alloc] initWithValues:&value
-                                                          forKeys:&key
-                                                            count:1] autorelease];
+  return [[(GPBInt32UInt32Dictionary*)[self alloc] initWithUInt32s:&value
+                                                           forKeys:&key
+                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint32_t [])values
-                             forKeys:(const int32_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32s:(const uint32_t [])values
+                              forKeys:(const int32_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32UInt32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt32UInt32Dictionary*)[self alloc] initWithUInt32s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -3457,12 +3535,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint32_t [])values
-                       forKeys:(const int32_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt32s:(const uint32_t [])values
+                        forKeys:(const int32_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -3476,7 +3554,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt32UInt32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -3487,7 +3565,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -3502,14 +3580,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32UInt32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32UInt32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32UInt32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32UInt32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -3524,7 +3603,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt32sUsingBlock:
     (void (^)(int32_t key, uint32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -3582,13 +3661,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int32_t key, uint32_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt32sUsingBlock:^(int32_t key, uint32_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%d", key], [NSString stringWithFormat:@"%u", value]);
   }];
 }
 
-- (BOOL)valueForKey:(int32_t)key value:(uint32_t *)value {
+- (BOOL)getUInt32:(nullable uint32_t *)value forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped unsignedIntValue];
@@ -3605,14 +3684,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint32_t)value forKey:(int32_t)key {
+- (void)setUInt32:(uint32_t)value forKey:(int32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int32_t)aKey {
+- (void)removeUInt32ForKey:(int32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -3630,24 +3709,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int32_t)value
++ (instancetype)dictionaryWithInt32:(int32_t)value
                              forKey:(int32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32Int32Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBInt32Int32Dictionary*)[self alloc] initWithInt32s:&value
                                                          forKeys:&key
                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int32_t [])values
++ (instancetype)dictionaryWithInt32s:(const int32_t [])values
                              forKeys:(const int32_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32Int32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt32Int32Dictionary*)[self alloc] initWithInt32s:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -3663,10 +3742,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int32_t [])values
+- (instancetype)initWithInt32s:(const int32_t [])values
                        forKeys:(const int32_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -3682,7 +3761,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt32Int32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -3693,7 +3772,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -3708,14 +3787,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32Int32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32Int32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32Int32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32Int32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -3730,7 +3810,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt32sUsingBlock:
     (void (^)(int32_t key, int32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -3788,13 +3868,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int32_t key, int32_t value, BOOL *stop) {
+  [self enumerateKeysAndInt32sUsingBlock:^(int32_t key, int32_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%d", key], [NSString stringWithFormat:@"%d", value]);
   }];
 }
 
-- (BOOL)valueForKey:(int32_t)key value:(int32_t *)value {
+- (BOOL)getInt32:(nullable int32_t *)value forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped intValue];
@@ -3811,14 +3891,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int32_t)value forKey:(int32_t)key {
+- (void)setInt32:(int32_t)value forKey:(int32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int32_t)aKey {
+- (void)removeInt32ForKey:(int32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -3836,24 +3916,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint64_t)value
-                             forKey:(int32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64:(uint64_t)value
+                              forKey:(int32_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32UInt64Dictionary*)[self alloc] initWithValues:&value
-                                                          forKeys:&key
-                                                            count:1] autorelease];
+  return [[(GPBInt32UInt64Dictionary*)[self alloc] initWithUInt64s:&value
+                                                           forKeys:&key
+                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint64_t [])values
-                             forKeys:(const int32_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64s:(const uint64_t [])values
+                              forKeys:(const int32_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32UInt64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt32UInt64Dictionary*)[self alloc] initWithUInt64s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -3869,12 +3949,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint64_t [])values
-                       forKeys:(const int32_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt64s:(const uint64_t [])values
+                        forKeys:(const int32_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -3888,7 +3968,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt32UInt64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -3899,7 +3979,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -3914,14 +3994,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32UInt64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32UInt64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32UInt64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32UInt64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -3936,7 +4017,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt64sUsingBlock:
     (void (^)(int32_t key, uint64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -3994,13 +4075,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int32_t key, uint64_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt64sUsingBlock:^(int32_t key, uint64_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%d", key], [NSString stringWithFormat:@"%llu", value]);
   }];
 }
 
-- (BOOL)valueForKey:(int32_t)key value:(uint64_t *)value {
+- (BOOL)getUInt64:(nullable uint64_t *)value forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped unsignedLongLongValue];
@@ -4017,14 +4098,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint64_t)value forKey:(int32_t)key {
+- (void)setUInt64:(uint64_t)value forKey:(int32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int32_t)aKey {
+- (void)removeUInt64ForKey:(int32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -4042,24 +4123,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int64_t)value
++ (instancetype)dictionaryWithInt64:(int64_t)value
                              forKey:(int32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32Int64Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBInt32Int64Dictionary*)[self alloc] initWithInt64s:&value
                                                          forKeys:&key
                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int64_t [])values
++ (instancetype)dictionaryWithInt64s:(const int64_t [])values
                              forKeys:(const int32_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32Int64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt32Int64Dictionary*)[self alloc] initWithInt64s:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -4075,10 +4156,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int64_t [])values
+- (instancetype)initWithInt64s:(const int64_t [])values
                        forKeys:(const int32_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -4094,7 +4175,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt32Int64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -4105,7 +4186,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -4120,14 +4201,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32Int64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32Int64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32Int64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32Int64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -4142,7 +4224,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt64sUsingBlock:
     (void (^)(int32_t key, int64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -4200,13 +4282,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int32_t key, int64_t value, BOOL *stop) {
+  [self enumerateKeysAndInt64sUsingBlock:^(int32_t key, int64_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%d", key], [NSString stringWithFormat:@"%lld", value]);
   }];
 }
 
-- (BOOL)valueForKey:(int32_t)key value:(int64_t *)value {
+- (BOOL)getInt64:(nullable int64_t *)value forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped longLongValue];
@@ -4223,14 +4305,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int64_t)value forKey:(int32_t)key {
+- (void)setInt64:(int64_t)value forKey:(int32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int32_t)aKey {
+- (void)removeInt64ForKey:(int32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -4248,24 +4330,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithBools:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(BOOL)value
-                             forKey:(int32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBool:(BOOL)value
+                            forKey:(int32_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32BoolDictionary*)[self alloc] initWithValues:&value
-                                                        forKeys:&key
-                                                          count:1] autorelease];
+  return [[(GPBInt32BoolDictionary*)[self alloc] initWithBools:&value
+                                                       forKeys:&key
+                                                         count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const BOOL [])values
-                             forKeys:(const int32_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBools:(const BOOL [])values
+                            forKeys:(const int32_t [])keys
+                              count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32BoolDictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt32BoolDictionary*)[self alloc] initWithBools:values
                                                         forKeys:keys
                                                           count:count] autorelease];
 }
@@ -4281,12 +4363,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const BOOL [])values
-                       forKeys:(const int32_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithBools:(const BOOL [])values
+                      forKeys:(const int32_t [])keys
+                        count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -4300,7 +4382,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt32BoolDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithBools:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -4311,7 +4393,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -4326,14 +4408,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32BoolDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32BoolDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32BoolDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32BoolDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -4348,7 +4431,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndBoolsUsingBlock:
     (void (^)(int32_t key, BOOL value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -4406,13 +4489,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int32_t key, BOOL value, BOOL *stop) {
+  [self enumerateKeysAndBoolsUsingBlock:^(int32_t key, BOOL value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%d", key], (value ? @"true" : @"false"));
   }];
 }
 
-- (BOOL)valueForKey:(int32_t)key value:(BOOL *)value {
+- (BOOL)getBool:(nullable BOOL *)value forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped boolValue];
@@ -4429,14 +4512,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(BOOL)value forKey:(int32_t)key {
+- (void)setBool:(BOOL)value forKey:(int32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int32_t)aKey {
+- (void)removeBoolForKey:(int32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -4454,24 +4537,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithFloats:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(float)value
++ (instancetype)dictionaryWithFloat:(float)value
                              forKey:(int32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32FloatDictionary*)[self alloc] initWithValues:&value
+  return [[(GPBInt32FloatDictionary*)[self alloc] initWithFloats:&value
                                                          forKeys:&key
                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const float [])values
++ (instancetype)dictionaryWithFloats:(const float [])values
                              forKeys:(const int32_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32FloatDictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt32FloatDictionary*)[self alloc] initWithFloats:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -4487,10 +4570,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const float [])values
+- (instancetype)initWithFloats:(const float [])values
                        forKeys:(const int32_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -4506,7 +4589,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt32FloatDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithFloats:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -4517,7 +4600,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -4532,14 +4615,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32FloatDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32FloatDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32FloatDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32FloatDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -4554,7 +4638,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndFloatsUsingBlock:
     (void (^)(int32_t key, float value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -4612,13 +4696,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int32_t key, float value, BOOL *stop) {
+  [self enumerateKeysAndFloatsUsingBlock:^(int32_t key, float value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%d", key], [NSString stringWithFormat:@"%.*g", FLT_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(int32_t)key value:(float *)value {
+- (BOOL)getFloat:(nullable float *)value forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped floatValue];
@@ -4635,14 +4719,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(float)value forKey:(int32_t)key {
+- (void)setFloat:(float)value forKey:(int32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int32_t)aKey {
+- (void)removeFloatForKey:(int32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -4660,24 +4744,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithDoubles:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(double)value
-                             forKey:(int32_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDouble:(double)value
+                              forKey:(int32_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32DoubleDictionary*)[self alloc] initWithValues:&value
-                                                          forKeys:&key
-                                                            count:1] autorelease];
+  return [[(GPBInt32DoubleDictionary*)[self alloc] initWithDoubles:&value
+                                                           forKeys:&key
+                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const double [])values
-                             forKeys:(const int32_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDoubles:(const double [])values
+                              forKeys:(const int32_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt32DoubleDictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt32DoubleDictionary*)[self alloc] initWithDoubles:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -4693,12 +4777,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const double [])values
-                       forKeys:(const int32_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithDoubles:(const double [])values
+                        forKeys:(const int32_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -4712,7 +4796,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt32DoubleDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithDoubles:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -4723,7 +4807,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -4738,14 +4822,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32DoubleDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32DoubleDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32DoubleDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32DoubleDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -4760,7 +4845,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndDoublesUsingBlock:
     (void (^)(int32_t key, double value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -4818,13 +4903,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int32_t key, double value, BOOL *stop) {
+  [self enumerateKeysAndDoublesUsingBlock:^(int32_t key, double value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%d", key], [NSString stringWithFormat:@"%.*lg", DBL_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(int32_t)key value:(double *)value {
+- (BOOL)getDouble:(nullable double *)value forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped doubleValue];
@@ -4841,14 +4926,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(double)value forKey:(int32_t)key {
+- (void)setDouble:(double)value forKey:(int32_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int32_t)aKey {
+- (void)removeDoubleForKey:(int32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -4972,14 +5057,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32EnumDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32EnumDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32EnumDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32EnumDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -5070,7 +5156,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }];
 }
 
-- (BOOL)valueForKey:(int32_t)key value:(int32_t *)value {
+- (BOOL)getEnum:(int32_t *)value forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     int32_t result = [wrapped intValue];
@@ -5082,7 +5168,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (BOOL)valueForKey:(int32_t)key rawValue:(int32_t *)rawValue {
+- (BOOL)getRawValue:(int32_t *)rawValue forKey:(int32_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && rawValue) {
     *rawValue = [wrapped intValue];
@@ -5090,7 +5176,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndEnumsUsingBlock:
     (void (^)(int32_t key, int32_t value, BOOL *stop))block {
   GPBEnumValidationFunc func = _validationFunc;
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
@@ -5120,7 +5206,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(int32_t)aKey {
+- (void)removeEnumForKey:(int32_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -5128,7 +5214,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   [_dictionary removeAllObjects];
 }
 
-- (void)setValue:(int32_t)value forKey:(int32_t)key {
+- (void)setEnum:(int32_t)value forKey:(int32_t)key {
   if (!_validationFunc(value)) {
     [NSException raise:NSInvalidArgumentException
                 format:@"GPBInt32EnumDictionary: Attempt to set an unknown enum value (%d)",
@@ -5195,6 +5281,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && objects && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!objects[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil object to a Dictionary"];
+        }
         [_dictionary setObject:objects[i] forKey:@(keys[i])];
       }
     }
@@ -5229,14 +5319,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt32ObjectDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt32ObjectDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt32ObjectDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt32ObjectDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -5353,6 +5444,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)setObject:(id)object forKey:(int32_t)key {
+  if (!object) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil object to a Dictionary"];
+  }
   [_dictionary setObject:object forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
@@ -5380,24 +5475,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint32_t)value
-                             forKey:(uint64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32:(uint32_t)value
+                              forKey:(uint64_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64UInt32Dictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBUInt64UInt32Dictionary*)[self alloc] initWithUInt32s:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint32_t [])values
-                             forKeys:(const uint64_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32s:(const uint32_t [])values
+                              forKeys:(const uint64_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64UInt32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt64UInt32Dictionary*)[self alloc] initWithUInt32s:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -5413,12 +5508,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint32_t [])values
-                       forKeys:(const uint64_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt32s:(const uint32_t [])values
+                        forKeys:(const uint64_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -5432,7 +5527,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt64UInt32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -5443,7 +5538,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -5458,14 +5553,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64UInt32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64UInt32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64UInt32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64UInt32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -5480,7 +5576,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt32sUsingBlock:
     (void (^)(uint64_t key, uint32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -5538,13 +5634,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint64_t key, uint32_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt32sUsingBlock:^(uint64_t key, uint32_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%llu", key], [NSString stringWithFormat:@"%u", value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint64_t)key value:(uint32_t *)value {
+- (BOOL)getUInt32:(nullable uint32_t *)value forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped unsignedIntValue];
@@ -5561,14 +5657,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint32_t)value forKey:(uint64_t)key {
+- (void)setUInt32:(uint32_t)value forKey:(uint64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint64_t)aKey {
+- (void)removeUInt32ForKey:(uint64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -5586,24 +5682,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int32_t)value
++ (instancetype)dictionaryWithInt32:(int32_t)value
                              forKey:(uint64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64Int32Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBUInt64Int32Dictionary*)[self alloc] initWithInt32s:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int32_t [])values
++ (instancetype)dictionaryWithInt32s:(const int32_t [])values
                              forKeys:(const uint64_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64Int32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt64Int32Dictionary*)[self alloc] initWithInt32s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -5619,10 +5715,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int32_t [])values
+- (instancetype)initWithInt32s:(const int32_t [])values
                        forKeys:(const uint64_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -5638,7 +5734,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt64Int32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -5649,7 +5745,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -5664,14 +5760,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64Int32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64Int32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64Int32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64Int32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -5686,7 +5783,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt32sUsingBlock:
     (void (^)(uint64_t key, int32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -5744,13 +5841,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint64_t key, int32_t value, BOOL *stop) {
+  [self enumerateKeysAndInt32sUsingBlock:^(uint64_t key, int32_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%llu", key], [NSString stringWithFormat:@"%d", value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint64_t)key value:(int32_t *)value {
+- (BOOL)getInt32:(nullable int32_t *)value forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped intValue];
@@ -5767,14 +5864,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int32_t)value forKey:(uint64_t)key {
+- (void)setInt32:(int32_t)value forKey:(uint64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint64_t)aKey {
+- (void)removeInt32ForKey:(uint64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -5792,24 +5889,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint64_t)value
-                             forKey:(uint64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64:(uint64_t)value
+                              forKey:(uint64_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64UInt64Dictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBUInt64UInt64Dictionary*)[self alloc] initWithUInt64s:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint64_t [])values
-                             forKeys:(const uint64_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64s:(const uint64_t [])values
+                              forKeys:(const uint64_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64UInt64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt64UInt64Dictionary*)[self alloc] initWithUInt64s:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -5825,12 +5922,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint64_t [])values
-                       forKeys:(const uint64_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt64s:(const uint64_t [])values
+                        forKeys:(const uint64_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -5844,7 +5941,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt64UInt64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -5855,7 +5952,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -5870,14 +5967,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64UInt64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64UInt64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64UInt64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64UInt64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -5892,7 +5990,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt64sUsingBlock:
     (void (^)(uint64_t key, uint64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -5950,13 +6048,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint64_t key, uint64_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt64sUsingBlock:^(uint64_t key, uint64_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%llu", key], [NSString stringWithFormat:@"%llu", value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint64_t)key value:(uint64_t *)value {
+- (BOOL)getUInt64:(nullable uint64_t *)value forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped unsignedLongLongValue];
@@ -5973,14 +6071,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint64_t)value forKey:(uint64_t)key {
+- (void)setUInt64:(uint64_t)value forKey:(uint64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint64_t)aKey {
+- (void)removeUInt64ForKey:(uint64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -5998,24 +6096,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int64_t)value
++ (instancetype)dictionaryWithInt64:(int64_t)value
                              forKey:(uint64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64Int64Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBUInt64Int64Dictionary*)[self alloc] initWithInt64s:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int64_t [])values
++ (instancetype)dictionaryWithInt64s:(const int64_t [])values
                              forKeys:(const uint64_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64Int64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt64Int64Dictionary*)[self alloc] initWithInt64s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -6031,10 +6129,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int64_t [])values
+- (instancetype)initWithInt64s:(const int64_t [])values
                        forKeys:(const uint64_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -6050,7 +6148,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt64Int64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -6061,7 +6159,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -6076,14 +6174,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64Int64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64Int64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64Int64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64Int64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -6098,7 +6197,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt64sUsingBlock:
     (void (^)(uint64_t key, int64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -6156,13 +6255,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint64_t key, int64_t value, BOOL *stop) {
+  [self enumerateKeysAndInt64sUsingBlock:^(uint64_t key, int64_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%llu", key], [NSString stringWithFormat:@"%lld", value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint64_t)key value:(int64_t *)value {
+- (BOOL)getInt64:(nullable int64_t *)value forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped longLongValue];
@@ -6179,14 +6278,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int64_t)value forKey:(uint64_t)key {
+- (void)setInt64:(int64_t)value forKey:(uint64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint64_t)aKey {
+- (void)removeInt64ForKey:(uint64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -6204,24 +6303,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithBools:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(BOOL)value
-                             forKey:(uint64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBool:(BOOL)value
+                            forKey:(uint64_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64BoolDictionary*)[self alloc] initWithValues:&value
-                                                         forKeys:&key
-                                                           count:1] autorelease];
+  return [[(GPBUInt64BoolDictionary*)[self alloc] initWithBools:&value
+                                                        forKeys:&key
+                                                          count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const BOOL [])values
-                             forKeys:(const uint64_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBools:(const BOOL [])values
+                            forKeys:(const uint64_t [])keys
+                              count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64BoolDictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt64BoolDictionary*)[self alloc] initWithBools:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -6237,12 +6336,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const BOOL [])values
-                       forKeys:(const uint64_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithBools:(const BOOL [])values
+                      forKeys:(const uint64_t [])keys
+                        count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -6256,7 +6355,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt64BoolDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithBools:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -6267,7 +6366,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -6282,14 +6381,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64BoolDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64BoolDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64BoolDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64BoolDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -6304,7 +6404,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndBoolsUsingBlock:
     (void (^)(uint64_t key, BOOL value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -6362,13 +6462,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint64_t key, BOOL value, BOOL *stop) {
+  [self enumerateKeysAndBoolsUsingBlock:^(uint64_t key, BOOL value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%llu", key], (value ? @"true" : @"false"));
   }];
 }
 
-- (BOOL)valueForKey:(uint64_t)key value:(BOOL *)value {
+- (BOOL)getBool:(nullable BOOL *)value forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped boolValue];
@@ -6385,14 +6485,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(BOOL)value forKey:(uint64_t)key {
+- (void)setBool:(BOOL)value forKey:(uint64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint64_t)aKey {
+- (void)removeBoolForKey:(uint64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -6410,24 +6510,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithFloats:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(float)value
++ (instancetype)dictionaryWithFloat:(float)value
                              forKey:(uint64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64FloatDictionary*)[self alloc] initWithValues:&value
+  return [[(GPBUInt64FloatDictionary*)[self alloc] initWithFloats:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const float [])values
++ (instancetype)dictionaryWithFloats:(const float [])values
                              forKeys:(const uint64_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64FloatDictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt64FloatDictionary*)[self alloc] initWithFloats:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -6443,10 +6543,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const float [])values
+- (instancetype)initWithFloats:(const float [])values
                        forKeys:(const uint64_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -6462,7 +6562,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt64FloatDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithFloats:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -6473,7 +6573,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -6488,14 +6588,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64FloatDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64FloatDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64FloatDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64FloatDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -6510,7 +6611,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndFloatsUsingBlock:
     (void (^)(uint64_t key, float value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -6568,13 +6669,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint64_t key, float value, BOOL *stop) {
+  [self enumerateKeysAndFloatsUsingBlock:^(uint64_t key, float value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%llu", key], [NSString stringWithFormat:@"%.*g", FLT_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint64_t)key value:(float *)value {
+- (BOOL)getFloat:(nullable float *)value forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped floatValue];
@@ -6591,14 +6692,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(float)value forKey:(uint64_t)key {
+- (void)setFloat:(float)value forKey:(uint64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint64_t)aKey {
+- (void)removeFloatForKey:(uint64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -6616,24 +6717,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithDoubles:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(double)value
-                             forKey:(uint64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDouble:(double)value
+                              forKey:(uint64_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64DoubleDictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBUInt64DoubleDictionary*)[self alloc] initWithDoubles:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const double [])values
-                             forKeys:(const uint64_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDoubles:(const double [])values
+                              forKeys:(const uint64_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBUInt64DoubleDictionary*)[self alloc] initWithValues:values
+  return [[(GPBUInt64DoubleDictionary*)[self alloc] initWithDoubles:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -6649,12 +6750,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const double [])values
-                       forKeys:(const uint64_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithDoubles:(const double [])values
+                        forKeys:(const uint64_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -6668,7 +6769,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBUInt64DoubleDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithDoubles:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -6679,7 +6780,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -6694,14 +6795,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64DoubleDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64DoubleDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64DoubleDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64DoubleDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -6716,7 +6818,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndDoublesUsingBlock:
     (void (^)(uint64_t key, double value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -6774,13 +6876,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(uint64_t key, double value, BOOL *stop) {
+  [self enumerateKeysAndDoublesUsingBlock:^(uint64_t key, double value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%llu", key], [NSString stringWithFormat:@"%.*lg", DBL_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(uint64_t)key value:(double *)value {
+- (BOOL)getDouble:(nullable double *)value forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped doubleValue];
@@ -6797,14 +6899,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(double)value forKey:(uint64_t)key {
+- (void)setDouble:(double)value forKey:(uint64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(uint64_t)aKey {
+- (void)removeDoubleForKey:(uint64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -6928,14 +7030,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64EnumDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64EnumDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64EnumDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64EnumDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -7026,7 +7129,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }];
 }
 
-- (BOOL)valueForKey:(uint64_t)key value:(int32_t *)value {
+- (BOOL)getEnum:(int32_t *)value forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     int32_t result = [wrapped intValue];
@@ -7038,7 +7141,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (BOOL)valueForKey:(uint64_t)key rawValue:(int32_t *)rawValue {
+- (BOOL)getRawValue:(int32_t *)rawValue forKey:(uint64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && rawValue) {
     *rawValue = [wrapped intValue];
@@ -7046,7 +7149,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndEnumsUsingBlock:
     (void (^)(uint64_t key, int32_t value, BOOL *stop))block {
   GPBEnumValidationFunc func = _validationFunc;
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
@@ -7076,7 +7179,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(uint64_t)aKey {
+- (void)removeEnumForKey:(uint64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -7084,7 +7187,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   [_dictionary removeAllObjects];
 }
 
-- (void)setValue:(int32_t)value forKey:(uint64_t)key {
+- (void)setEnum:(int32_t)value forKey:(uint64_t)key {
   if (!_validationFunc(value)) {
     [NSException raise:NSInvalidArgumentException
                 format:@"GPBUInt64EnumDictionary: Attempt to set an unknown enum value (%d)",
@@ -7151,6 +7254,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && objects && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!objects[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil object to a Dictionary"];
+        }
         [_dictionary setObject:objects[i] forKey:@(keys[i])];
       }
     }
@@ -7185,14 +7292,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBUInt64ObjectDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBUInt64ObjectDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBUInt64ObjectDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBUInt64ObjectDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -7309,6 +7417,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)setObject:(id)object forKey:(uint64_t)key {
+  if (!object) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil object to a Dictionary"];
+  }
   [_dictionary setObject:object forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
@@ -7336,24 +7448,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint32_t)value
-                             forKey:(int64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32:(uint32_t)value
+                              forKey:(int64_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64UInt32Dictionary*)[self alloc] initWithValues:&value
-                                                          forKeys:&key
-                                                            count:1] autorelease];
+  return [[(GPBInt64UInt32Dictionary*)[self alloc] initWithUInt32s:&value
+                                                           forKeys:&key
+                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint32_t [])values
-                             forKeys:(const int64_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32s:(const uint32_t [])values
+                              forKeys:(const int64_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64UInt32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt64UInt32Dictionary*)[self alloc] initWithUInt32s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -7369,12 +7481,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint32_t [])values
-                       forKeys:(const int64_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt32s:(const uint32_t [])values
+                        forKeys:(const int64_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -7388,7 +7500,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt64UInt32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -7399,7 +7511,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -7414,14 +7526,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64UInt32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64UInt32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64UInt32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64UInt32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -7436,7 +7549,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt32sUsingBlock:
     (void (^)(int64_t key, uint32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -7494,13 +7607,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int64_t key, uint32_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt32sUsingBlock:^(int64_t key, uint32_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%lld", key], [NSString stringWithFormat:@"%u", value]);
   }];
 }
 
-- (BOOL)valueForKey:(int64_t)key value:(uint32_t *)value {
+- (BOOL)getUInt32:(nullable uint32_t *)value forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped unsignedIntValue];
@@ -7517,14 +7630,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint32_t)value forKey:(int64_t)key {
+- (void)setUInt32:(uint32_t)value forKey:(int64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int64_t)aKey {
+- (void)removeUInt32ForKey:(int64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -7542,24 +7655,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int32_t)value
++ (instancetype)dictionaryWithInt32:(int32_t)value
                              forKey:(int64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64Int32Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBInt64Int32Dictionary*)[self alloc] initWithInt32s:&value
                                                          forKeys:&key
                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int32_t [])values
++ (instancetype)dictionaryWithInt32s:(const int32_t [])values
                              forKeys:(const int64_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64Int32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt64Int32Dictionary*)[self alloc] initWithInt32s:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -7575,10 +7688,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int32_t [])values
+- (instancetype)initWithInt32s:(const int32_t [])values
                        forKeys:(const int64_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -7594,7 +7707,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt64Int32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -7605,7 +7718,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -7620,14 +7733,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64Int32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64Int32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64Int32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64Int32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -7642,7 +7756,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt32sUsingBlock:
     (void (^)(int64_t key, int32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -7700,13 +7814,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int64_t key, int32_t value, BOOL *stop) {
+  [self enumerateKeysAndInt32sUsingBlock:^(int64_t key, int32_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%lld", key], [NSString stringWithFormat:@"%d", value]);
   }];
 }
 
-- (BOOL)valueForKey:(int64_t)key value:(int32_t *)value {
+- (BOOL)getInt32:(nullable int32_t *)value forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped intValue];
@@ -7723,14 +7837,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int32_t)value forKey:(int64_t)key {
+- (void)setInt32:(int32_t)value forKey:(int64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int64_t)aKey {
+- (void)removeInt32ForKey:(int64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -7748,24 +7862,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint64_t)value
-                             forKey:(int64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64:(uint64_t)value
+                              forKey:(int64_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64UInt64Dictionary*)[self alloc] initWithValues:&value
-                                                          forKeys:&key
-                                                            count:1] autorelease];
+  return [[(GPBInt64UInt64Dictionary*)[self alloc] initWithUInt64s:&value
+                                                           forKeys:&key
+                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint64_t [])values
-                             forKeys:(const int64_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64s:(const uint64_t [])values
+                              forKeys:(const int64_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64UInt64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt64UInt64Dictionary*)[self alloc] initWithUInt64s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -7781,12 +7895,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint64_t [])values
-                       forKeys:(const int64_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt64s:(const uint64_t [])values
+                        forKeys:(const int64_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -7800,7 +7914,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt64UInt64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -7811,7 +7925,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -7826,14 +7940,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64UInt64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64UInt64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64UInt64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64UInt64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -7848,7 +7963,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt64sUsingBlock:
     (void (^)(int64_t key, uint64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -7906,13 +8021,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int64_t key, uint64_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt64sUsingBlock:^(int64_t key, uint64_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%lld", key], [NSString stringWithFormat:@"%llu", value]);
   }];
 }
 
-- (BOOL)valueForKey:(int64_t)key value:(uint64_t *)value {
+- (BOOL)getUInt64:(nullable uint64_t *)value forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped unsignedLongLongValue];
@@ -7929,14 +8044,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint64_t)value forKey:(int64_t)key {
+- (void)setUInt64:(uint64_t)value forKey:(int64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int64_t)aKey {
+- (void)removeUInt64ForKey:(int64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -7954,24 +8069,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int64_t)value
++ (instancetype)dictionaryWithInt64:(int64_t)value
                              forKey:(int64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64Int64Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBInt64Int64Dictionary*)[self alloc] initWithInt64s:&value
                                                          forKeys:&key
                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int64_t [])values
++ (instancetype)dictionaryWithInt64s:(const int64_t [])values
                              forKeys:(const int64_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64Int64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt64Int64Dictionary*)[self alloc] initWithInt64s:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -7987,10 +8102,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int64_t [])values
+- (instancetype)initWithInt64s:(const int64_t [])values
                        forKeys:(const int64_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -8006,7 +8121,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt64Int64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -8017,7 +8132,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -8032,14 +8147,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64Int64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64Int64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64Int64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64Int64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -8054,7 +8170,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt64sUsingBlock:
     (void (^)(int64_t key, int64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -8112,13 +8228,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int64_t key, int64_t value, BOOL *stop) {
+  [self enumerateKeysAndInt64sUsingBlock:^(int64_t key, int64_t value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%lld", key], [NSString stringWithFormat:@"%lld", value]);
   }];
 }
 
-- (BOOL)valueForKey:(int64_t)key value:(int64_t *)value {
+- (BOOL)getInt64:(nullable int64_t *)value forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped longLongValue];
@@ -8135,14 +8251,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int64_t)value forKey:(int64_t)key {
+- (void)setInt64:(int64_t)value forKey:(int64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int64_t)aKey {
+- (void)removeInt64ForKey:(int64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -8160,24 +8276,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithBools:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(BOOL)value
-                             forKey:(int64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBool:(BOOL)value
+                            forKey:(int64_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64BoolDictionary*)[self alloc] initWithValues:&value
-                                                        forKeys:&key
-                                                          count:1] autorelease];
+  return [[(GPBInt64BoolDictionary*)[self alloc] initWithBools:&value
+                                                       forKeys:&key
+                                                         count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const BOOL [])values
-                             forKeys:(const int64_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBools:(const BOOL [])values
+                            forKeys:(const int64_t [])keys
+                              count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64BoolDictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt64BoolDictionary*)[self alloc] initWithBools:values
                                                         forKeys:keys
                                                           count:count] autorelease];
 }
@@ -8193,12 +8309,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const BOOL [])values
-                       forKeys:(const int64_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithBools:(const BOOL [])values
+                      forKeys:(const int64_t [])keys
+                        count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -8212,7 +8328,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt64BoolDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithBools:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -8223,7 +8339,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -8238,14 +8354,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64BoolDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64BoolDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64BoolDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64BoolDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -8260,7 +8377,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndBoolsUsingBlock:
     (void (^)(int64_t key, BOOL value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -8318,13 +8435,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int64_t key, BOOL value, BOOL *stop) {
+  [self enumerateKeysAndBoolsUsingBlock:^(int64_t key, BOOL value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%lld", key], (value ? @"true" : @"false"));
   }];
 }
 
-- (BOOL)valueForKey:(int64_t)key value:(BOOL *)value {
+- (BOOL)getBool:(nullable BOOL *)value forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped boolValue];
@@ -8341,14 +8458,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(BOOL)value forKey:(int64_t)key {
+- (void)setBool:(BOOL)value forKey:(int64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int64_t)aKey {
+- (void)removeBoolForKey:(int64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -8366,24 +8483,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithFloats:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(float)value
++ (instancetype)dictionaryWithFloat:(float)value
                              forKey:(int64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64FloatDictionary*)[self alloc] initWithValues:&value
+  return [[(GPBInt64FloatDictionary*)[self alloc] initWithFloats:&value
                                                          forKeys:&key
                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const float [])values
++ (instancetype)dictionaryWithFloats:(const float [])values
                              forKeys:(const int64_t [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64FloatDictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt64FloatDictionary*)[self alloc] initWithFloats:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -8399,10 +8516,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const float [])values
+- (instancetype)initWithFloats:(const float [])values
                        forKeys:(const int64_t [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -8418,7 +8535,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt64FloatDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithFloats:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -8429,7 +8546,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -8444,14 +8561,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64FloatDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64FloatDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64FloatDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64FloatDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -8466,7 +8584,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndFloatsUsingBlock:
     (void (^)(int64_t key, float value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -8524,13 +8642,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int64_t key, float value, BOOL *stop) {
+  [self enumerateKeysAndFloatsUsingBlock:^(int64_t key, float value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%lld", key], [NSString stringWithFormat:@"%.*g", FLT_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(int64_t)key value:(float *)value {
+- (BOOL)getFloat:(nullable float *)value forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped floatValue];
@@ -8547,14 +8665,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(float)value forKey:(int64_t)key {
+- (void)setFloat:(float)value forKey:(int64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int64_t)aKey {
+- (void)removeFloatForKey:(int64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -8572,24 +8690,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithDoubles:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(double)value
-                             forKey:(int64_t)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDouble:(double)value
+                              forKey:(int64_t)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64DoubleDictionary*)[self alloc] initWithValues:&value
-                                                          forKeys:&key
-                                                            count:1] autorelease];
+  return [[(GPBInt64DoubleDictionary*)[self alloc] initWithDoubles:&value
+                                                           forKeys:&key
+                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const double [])values
-                             forKeys:(const int64_t [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDoubles:(const double [])values
+                              forKeys:(const int64_t [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBInt64DoubleDictionary*)[self alloc] initWithValues:values
+  return [[(GPBInt64DoubleDictionary*)[self alloc] initWithDoubles:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -8605,12 +8723,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const double [])values
-                       forKeys:(const int64_t [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithDoubles:(const double [])values
+                        forKeys:(const int64_t [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
@@ -8624,7 +8742,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBInt64DoubleDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithDoubles:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -8635,7 +8753,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -8650,14 +8768,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64DoubleDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64DoubleDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64DoubleDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64DoubleDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -8672,7 +8791,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndDoublesUsingBlock:
     (void (^)(int64_t key, double value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
                                                    NSNumber *aValue,
@@ -8730,13 +8849,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(int64_t key, double value, BOOL *stop) {
+  [self enumerateKeysAndDoublesUsingBlock:^(int64_t key, double value, BOOL *stop) {
       #pragma unused(stop)
       block([NSString stringWithFormat:@"%lld", key], [NSString stringWithFormat:@"%.*lg", DBL_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(int64_t)key value:(double *)value {
+- (BOOL)getDouble:(nullable double *)value forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     *value = [wrapped doubleValue];
@@ -8753,14 +8872,14 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(double)value forKey:(int64_t)key {
+- (void)setDouble:(double)value forKey:(int64_t)key {
   [_dictionary setObject:@(value) forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(int64_t)aKey {
+- (void)removeDoubleForKey:(int64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -8884,14 +9003,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64EnumDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64EnumDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64EnumDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64EnumDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -8982,7 +9102,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }];
 }
 
-- (BOOL)valueForKey:(int64_t)key value:(int32_t *)value {
+- (BOOL)getEnum:(int32_t *)value forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && value) {
     int32_t result = [wrapped intValue];
@@ -8994,7 +9114,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (BOOL)valueForKey:(int64_t)key rawValue:(int32_t *)rawValue {
+- (BOOL)getRawValue:(int32_t *)rawValue forKey:(int64_t)key {
   NSNumber *wrapped = [_dictionary objectForKey:@(key)];
   if (wrapped && rawValue) {
     *rawValue = [wrapped intValue];
@@ -9002,7 +9122,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndEnumsUsingBlock:
     (void (^)(int64_t key, int32_t value, BOOL *stop))block {
   GPBEnumValidationFunc func = _validationFunc;
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSNumber *aKey,
@@ -9032,7 +9152,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(int64_t)aKey {
+- (void)removeEnumForKey:(int64_t)aKey {
   [_dictionary removeObjectForKey:@(aKey)];
 }
 
@@ -9040,7 +9160,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   [_dictionary removeAllObjects];
 }
 
-- (void)setValue:(int32_t)value forKey:(int64_t)key {
+- (void)setEnum:(int32_t)value forKey:(int64_t)key {
   if (!_validationFunc(value)) {
     [NSException raise:NSInvalidArgumentException
                 format:@"GPBInt64EnumDictionary: Attempt to set an unknown enum value (%d)",
@@ -9107,6 +9227,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && objects && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!objects[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil object to a Dictionary"];
+        }
         [_dictionary setObject:objects[i] forKey:@(keys[i])];
       }
     }
@@ -9141,14 +9265,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBInt64ObjectDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBInt64ObjectDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBInt64ObjectDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBInt64ObjectDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -9265,6 +9390,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)setObject:(id)object forKey:(int64_t)key {
+  if (!object) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil object to a Dictionary"];
+  }
   [_dictionary setObject:object forKey:@(key)];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
@@ -9292,24 +9421,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint32_t)value
-                             forKey:(NSString *)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32:(uint32_t)value
+                              forKey:(NSString *)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringUInt32Dictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBStringUInt32Dictionary*)[self alloc] initWithUInt32s:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint32_t [])values
-                             forKeys:(const NSString * [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32s:(const uint32_t [])values
+                              forKeys:(const NSString * [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringUInt32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBStringUInt32Dictionary*)[self alloc] initWithUInt32s:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -9325,17 +9454,21 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint32_t [])values
-                       forKeys:(const NSString * [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt32s:(const uint32_t [])values
+                        forKeys:(const NSString * [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && values && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!keys[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil key to a Dictionary"];
+        }
         [_dictionary setObject:@(values[i]) forKey:keys[i]];
       }
     }
@@ -9344,7 +9477,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBStringUInt32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -9355,7 +9488,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -9370,14 +9503,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBStringUInt32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBStringUInt32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBStringUInt32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBStringUInt32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -9392,7 +9526,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt32sUsingBlock:
     (void (^)(NSString *key, uint32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSString *aKey,
                                                    NSNumber *aValue,
@@ -9450,13 +9584,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(NSString *key, uint32_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt32sUsingBlock:^(NSString *key, uint32_t value, BOOL *stop) {
       #pragma unused(stop)
       block(key, [NSString stringWithFormat:@"%u", value]);
   }];
 }
 
-- (BOOL)valueForKey:(NSString *)key value:(uint32_t *)value {
+- (BOOL)getUInt32:(nullable uint32_t *)value forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && value) {
     *value = [wrapped unsignedIntValue];
@@ -9473,14 +9607,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint32_t)value forKey:(NSString *)key {
+- (void)setUInt32:(uint32_t)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   [_dictionary setObject:@(value) forKey:key];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(NSString *)aKey {
+- (void)removeUInt32ForKey:(NSString *)aKey {
   [_dictionary removeObjectForKey:aKey];
 }
 
@@ -9498,24 +9636,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int32_t)value
++ (instancetype)dictionaryWithInt32:(int32_t)value
                              forKey:(NSString *)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringInt32Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBStringInt32Dictionary*)[self alloc] initWithInt32s:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int32_t [])values
++ (instancetype)dictionaryWithInt32s:(const int32_t [])values
                              forKeys:(const NSString * [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringInt32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBStringInt32Dictionary*)[self alloc] initWithInt32s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -9531,10 +9669,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int32_t [])values
+- (instancetype)initWithInt32s:(const int32_t [])values
                        forKeys:(const NSString * [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -9542,6 +9680,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && values && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!keys[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil key to a Dictionary"];
+        }
         [_dictionary setObject:@(values[i]) forKey:keys[i]];
       }
     }
@@ -9550,7 +9692,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBStringInt32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -9561,7 +9703,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -9576,14 +9718,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBStringInt32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBStringInt32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBStringInt32Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBStringInt32Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -9598,7 +9741,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt32sUsingBlock:
     (void (^)(NSString *key, int32_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSString *aKey,
                                                    NSNumber *aValue,
@@ -9656,13 +9799,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(NSString *key, int32_t value, BOOL *stop) {
+  [self enumerateKeysAndInt32sUsingBlock:^(NSString *key, int32_t value, BOOL *stop) {
       #pragma unused(stop)
       block(key, [NSString stringWithFormat:@"%d", value]);
   }];
 }
 
-- (BOOL)valueForKey:(NSString *)key value:(int32_t *)value {
+- (BOOL)getInt32:(nullable int32_t *)value forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && value) {
     *value = [wrapped intValue];
@@ -9679,14 +9822,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int32_t)value forKey:(NSString *)key {
+- (void)setInt32:(int32_t)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   [_dictionary setObject:@(value) forKey:key];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(NSString *)aKey {
+- (void)removeInt32ForKey:(NSString *)aKey {
   [_dictionary removeObjectForKey:aKey];
 }
 
@@ -9704,24 +9851,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint64_t)value
-                             forKey:(NSString *)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64:(uint64_t)value
+                              forKey:(NSString *)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringUInt64Dictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBStringUInt64Dictionary*)[self alloc] initWithUInt64s:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint64_t [])values
-                             forKeys:(const NSString * [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64s:(const uint64_t [])values
+                              forKeys:(const NSString * [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringUInt64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBStringUInt64Dictionary*)[self alloc] initWithUInt64s:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -9737,17 +9884,21 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint64_t [])values
-                       forKeys:(const NSString * [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt64s:(const uint64_t [])values
+                        forKeys:(const NSString * [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && values && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!keys[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil key to a Dictionary"];
+        }
         [_dictionary setObject:@(values[i]) forKey:keys[i]];
       }
     }
@@ -9756,7 +9907,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBStringUInt64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -9767,7 +9918,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -9782,14 +9933,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBStringUInt64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBStringUInt64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBStringUInt64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBStringUInt64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -9804,7 +9956,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt64sUsingBlock:
     (void (^)(NSString *key, uint64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSString *aKey,
                                                    NSNumber *aValue,
@@ -9862,13 +10014,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(NSString *key, uint64_t value, BOOL *stop) {
+  [self enumerateKeysAndUInt64sUsingBlock:^(NSString *key, uint64_t value, BOOL *stop) {
       #pragma unused(stop)
       block(key, [NSString stringWithFormat:@"%llu", value]);
   }];
 }
 
-- (BOOL)valueForKey:(NSString *)key value:(uint64_t *)value {
+- (BOOL)getUInt64:(nullable uint64_t *)value forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && value) {
     *value = [wrapped unsignedLongLongValue];
@@ -9885,14 +10037,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint64_t)value forKey:(NSString *)key {
+- (void)setUInt64:(uint64_t)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   [_dictionary setObject:@(value) forKey:key];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(NSString *)aKey {
+- (void)removeUInt64ForKey:(NSString *)aKey {
   [_dictionary removeObjectForKey:aKey];
 }
 
@@ -9910,24 +10066,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int64_t)value
++ (instancetype)dictionaryWithInt64:(int64_t)value
                              forKey:(NSString *)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringInt64Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBStringInt64Dictionary*)[self alloc] initWithInt64s:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int64_t [])values
++ (instancetype)dictionaryWithInt64s:(const int64_t [])values
                              forKeys:(const NSString * [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringInt64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBStringInt64Dictionary*)[self alloc] initWithInt64s:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -9943,10 +10099,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int64_t [])values
+- (instancetype)initWithInt64s:(const int64_t [])values
                        forKeys:(const NSString * [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -9954,6 +10110,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && values && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!keys[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil key to a Dictionary"];
+        }
         [_dictionary setObject:@(values[i]) forKey:keys[i]];
       }
     }
@@ -9962,7 +10122,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBStringInt64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -9973,7 +10133,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -9988,14 +10148,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBStringInt64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBStringInt64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBStringInt64Dictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBStringInt64Dictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -10010,7 +10171,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt64sUsingBlock:
     (void (^)(NSString *key, int64_t value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSString *aKey,
                                                    NSNumber *aValue,
@@ -10068,13 +10229,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(NSString *key, int64_t value, BOOL *stop) {
+  [self enumerateKeysAndInt64sUsingBlock:^(NSString *key, int64_t value, BOOL *stop) {
       #pragma unused(stop)
       block(key, [NSString stringWithFormat:@"%lld", value]);
   }];
 }
 
-- (BOOL)valueForKey:(NSString *)key value:(int64_t *)value {
+- (BOOL)getInt64:(nullable int64_t *)value forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && value) {
     *value = [wrapped longLongValue];
@@ -10091,14 +10252,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int64_t)value forKey:(NSString *)key {
+- (void)setInt64:(int64_t)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   [_dictionary setObject:@(value) forKey:key];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(NSString *)aKey {
+- (void)removeInt64ForKey:(NSString *)aKey {
   [_dictionary removeObjectForKey:aKey];
 }
 
@@ -10116,24 +10281,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithBools:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(BOOL)value
-                             forKey:(NSString *)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBool:(BOOL)value
+                            forKey:(NSString *)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringBoolDictionary*)[self alloc] initWithValues:&value
-                                                         forKeys:&key
-                                                           count:1] autorelease];
+  return [[(GPBStringBoolDictionary*)[self alloc] initWithBools:&value
+                                                        forKeys:&key
+                                                          count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const BOOL [])values
-                             forKeys:(const NSString * [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBools:(const BOOL [])values
+                            forKeys:(const NSString * [])keys
+                              count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringBoolDictionary*)[self alloc] initWithValues:values
+  return [[(GPBStringBoolDictionary*)[self alloc] initWithBools:values
                                                          forKeys:keys
                                                            count:count] autorelease];
 }
@@ -10149,17 +10314,21 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const BOOL [])values
-                       forKeys:(const NSString * [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithBools:(const BOOL [])values
+                      forKeys:(const NSString * [])keys
+                        count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && values && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!keys[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil key to a Dictionary"];
+        }
         [_dictionary setObject:@(values[i]) forKey:keys[i]];
       }
     }
@@ -10168,7 +10337,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBStringBoolDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithBools:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -10179,7 +10348,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -10194,14 +10363,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBStringBoolDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBStringBoolDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBStringBoolDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBStringBoolDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -10216,7 +10386,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndBoolsUsingBlock:
     (void (^)(NSString *key, BOOL value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSString *aKey,
                                                    NSNumber *aValue,
@@ -10274,13 +10444,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(NSString *key, BOOL value, BOOL *stop) {
+  [self enumerateKeysAndBoolsUsingBlock:^(NSString *key, BOOL value, BOOL *stop) {
       #pragma unused(stop)
       block(key, (value ? @"true" : @"false"));
   }];
 }
 
-- (BOOL)valueForKey:(NSString *)key value:(BOOL *)value {
+- (BOOL)getBool:(nullable BOOL *)value forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && value) {
     *value = [wrapped boolValue];
@@ -10297,14 +10467,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(BOOL)value forKey:(NSString *)key {
+- (void)setBool:(BOOL)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   [_dictionary setObject:@(value) forKey:key];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(NSString *)aKey {
+- (void)removeBoolForKey:(NSString *)aKey {
   [_dictionary removeObjectForKey:aKey];
 }
 
@@ -10322,24 +10496,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithFloats:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(float)value
++ (instancetype)dictionaryWithFloat:(float)value
                              forKey:(NSString *)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringFloatDictionary*)[self alloc] initWithValues:&value
+  return [[(GPBStringFloatDictionary*)[self alloc] initWithFloats:&value
                                                           forKeys:&key
                                                             count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const float [])values
++ (instancetype)dictionaryWithFloats:(const float [])values
                              forKeys:(const NSString * [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringFloatDictionary*)[self alloc] initWithValues:values
+  return [[(GPBStringFloatDictionary*)[self alloc] initWithFloats:values
                                                           forKeys:keys
                                                             count:count] autorelease];
 }
@@ -10355,10 +10529,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const float [])values
+- (instancetype)initWithFloats:(const float [])values
                        forKeys:(const NSString * [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -10366,6 +10540,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && values && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!keys[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil key to a Dictionary"];
+        }
         [_dictionary setObject:@(values[i]) forKey:keys[i]];
       }
     }
@@ -10374,7 +10552,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBStringFloatDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithFloats:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -10385,7 +10563,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -10400,14 +10578,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBStringFloatDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBStringFloatDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBStringFloatDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBStringFloatDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -10422,7 +10601,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndFloatsUsingBlock:
     (void (^)(NSString *key, float value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSString *aKey,
                                                    NSNumber *aValue,
@@ -10480,13 +10659,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(NSString *key, float value, BOOL *stop) {
+  [self enumerateKeysAndFloatsUsingBlock:^(NSString *key, float value, BOOL *stop) {
       #pragma unused(stop)
       block(key, [NSString stringWithFormat:@"%.*g", FLT_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(NSString *)key value:(float *)value {
+- (BOOL)getFloat:(nullable float *)value forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && value) {
     *value = [wrapped floatValue];
@@ -10503,14 +10682,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(float)value forKey:(NSString *)key {
+- (void)setFloat:(float)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   [_dictionary setObject:@(value) forKey:key];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(NSString *)aKey {
+- (void)removeFloatForKey:(NSString *)aKey {
   [_dictionary removeObjectForKey:aKey];
 }
 
@@ -10528,24 +10711,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithDoubles:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(double)value
-                             forKey:(NSString *)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDouble:(double)value
+                              forKey:(NSString *)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringDoubleDictionary*)[self alloc] initWithValues:&value
-                                                           forKeys:&key
-                                                             count:1] autorelease];
+  return [[(GPBStringDoubleDictionary*)[self alloc] initWithDoubles:&value
+                                                            forKeys:&key
+                                                              count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const double [])values
-                             forKeys:(const NSString * [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDoubles:(const double [])values
+                              forKeys:(const NSString * [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBStringDoubleDictionary*)[self alloc] initWithValues:values
+  return [[(GPBStringDoubleDictionary*)[self alloc] initWithDoubles:values
                                                            forKeys:keys
                                                              count:count] autorelease];
 }
@@ -10561,17 +10744,21 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const double [])values
-                       forKeys:(const NSString * [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithDoubles:(const double [])values
+                        forKeys:(const NSString * [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     _dictionary = [[NSMutableDictionary alloc] init];
     if (count && values && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!keys[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil key to a Dictionary"];
+        }
         [_dictionary setObject:@(values[i]) forKey:keys[i]];
       }
     }
@@ -10580,7 +10767,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBStringDoubleDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithDoubles:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       [_dictionary addEntriesFromDictionary:dictionary->_dictionary];
@@ -10591,7 +10778,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
 - (void)dealloc {
@@ -10606,14 +10793,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBStringDoubleDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBStringDoubleDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBStringDoubleDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBStringDoubleDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -10628,7 +10816,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return _dictionary.count;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndDoublesUsingBlock:
     (void (^)(NSString *key, double value, BOOL *stop))block {
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSString *aKey,
                                                    NSNumber *aValue,
@@ -10686,13 +10874,13 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)enumerateForTextFormat:(void (^)(id keyObj, id valueObj))block {
-  [self enumerateKeysAndValuesUsingBlock:^(NSString *key, double value, BOOL *stop) {
+  [self enumerateKeysAndDoublesUsingBlock:^(NSString *key, double value, BOOL *stop) {
       #pragma unused(stop)
       block(key, [NSString stringWithFormat:@"%.*lg", DBL_DIG, value]);
   }];
 }
 
-- (BOOL)valueForKey:(NSString *)key value:(double *)value {
+- (BOOL)getDouble:(nullable double *)value forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && value) {
     *value = [wrapped doubleValue];
@@ -10709,14 +10897,18 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(double)value forKey:(NSString *)key {
+- (void)setDouble:(double)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   [_dictionary setObject:@(value) forKey:key];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(NSString *)aKey {
+- (void)removeDoubleForKey:(NSString *)aKey {
   [_dictionary removeObjectForKey:aKey];
 }
 
@@ -10802,6 +10994,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
     _validationFunc = (func != NULL ? func : DictDefault_IsValidValue);
     if (count && rawValues && keys) {
       for (NSUInteger i = 0; i < count; ++i) {
+        if (!keys[i]) {
+          [NSException raise:NSInvalidArgumentException
+                      format:@"Attempting to add nil key to a Dictionary"];
+        }
         [_dictionary setObject:@(rawValues[i]) forKey:keys[i]];
       }
     }
@@ -10840,14 +11036,15 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBStringEnumDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBStringEnumDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBStringEnumDictionary class]]) {
     return NO;
   }
-  return [_dictionary isEqual:other->_dictionary];
+  GPBStringEnumDictionary *otherDictionary = other;
+  return [_dictionary isEqual:otherDictionary->_dictionary];
 }
 
 - (NSUInteger)hash {
@@ -10938,7 +11135,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }];
 }
 
-- (BOOL)valueForKey:(NSString *)key value:(int32_t *)value {
+- (BOOL)getEnum:(int32_t *)value forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && value) {
     int32_t result = [wrapped intValue];
@@ -10950,7 +11147,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (BOOL)valueForKey:(NSString *)key rawValue:(int32_t *)rawValue {
+- (BOOL)getRawValue:(int32_t *)rawValue forKey:(NSString *)key {
   NSNumber *wrapped = [_dictionary objectForKey:key];
   if (wrapped && rawValue) {
     *rawValue = [wrapped intValue];
@@ -10958,7 +11155,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (wrapped != NULL);
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndEnumsUsingBlock:
     (void (^)(NSString *key, int32_t value, BOOL *stop))block {
   GPBEnumValidationFunc func = _validationFunc;
   [_dictionary enumerateKeysAndObjectsUsingBlock:^(NSString *aKey,
@@ -10982,13 +11179,17 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)setRawValue:(int32_t)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   [_dictionary setObject:@(value) forKey:key];
   if (_autocreator) {
     GPBAutocreatedDictionaryModified(_autocreator, self);
   }
 }
 
-- (void)removeValueForKey:(NSString *)aKey {
+- (void)removeEnumForKey:(NSString *)aKey {
   [_dictionary removeObjectForKey:aKey];
 }
 
@@ -10996,7 +11197,11 @@ void GPBDictionaryReadEntry(id mapDictionary,
   [_dictionary removeAllObjects];
 }
 
-- (void)setValue:(int32_t)value forKey:(NSString *)key {
+- (void)setEnum:(int32_t)value forKey:(NSString *)key {
+  if (!key) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil key to a Dictionary"];
+  }
   if (!_validationFunc(value)) {
     [NSException raise:NSInvalidArgumentException
                 format:@"GPBStringEnumDictionary: Attempt to set an unknown enum value (%d)",
@@ -11026,26 +11231,26 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint32_t)value
-                             forKey:(BOOL)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32:(uint32_t)value
+                              forKey:(BOOL)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolUInt32Dictionary*)[self alloc] initWithValues:&value
-                                                         forKeys:&key
-                                                           count:1] autorelease];
+  return [[(GPBBoolUInt32Dictionary*)[self alloc] initWithUInt32s:&value
+                                                          forKeys:&key
+                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint32_t [])values
-                             forKeys:(const BOOL [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt32s:(const uint32_t [])values
+                              forKeys:(const BOOL [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolUInt32Dictionary*)[self alloc] initWithValues:values
-                                                         forKeys:keys
-                                                           count:count] autorelease];
+  return [[(GPBBoolUInt32Dictionary*)[self alloc] initWithUInt32s:values
+                                                          forKeys:keys
+                                                            count:count] autorelease];
 }
 
 + (instancetype)dictionaryWithDictionary:(GPBBoolUInt32Dictionary *)dictionary {
@@ -11059,12 +11264,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint32_t [])values
-                       forKeys:(const BOOL [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt32s:(const uint32_t [])values
+                        forKeys:(const BOOL [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     for (NSUInteger i = 0; i < count; ++i) {
@@ -11077,7 +11282,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBBoolUInt32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       for (int i = 0; i < 2; ++i) {
@@ -11093,7 +11298,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt32s:NULL forKeys:NULL count:0];
 }
 
 #if !defined(NS_BLOCK_ASSERTIONS)
@@ -11109,19 +11314,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolUInt32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolUInt32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolUInt32Dictionary class]]) {
     return NO;
   }
-  if ((_valueSet[0] != other->_valueSet[0]) ||
-      (_valueSet[1] != other->_valueSet[1])) {
+  GPBBoolUInt32Dictionary *otherDictionary = other;
+  if ((_valueSet[0] != otherDictionary->_valueSet[0]) ||
+      (_valueSet[1] != otherDictionary->_valueSet[1])) {
     return NO;
   }
-  if ((_valueSet[0] && (_values[0] != other->_values[0])) ||
-      (_valueSet[1] && (_values[1] != other->_values[1]))) {
+  if ((_valueSet[0] && (_values[0] != otherDictionary->_values[0])) ||
+      (_valueSet[1] && (_values[1] != otherDictionary->_values[1]))) {
     return NO;
   }
   return YES;
@@ -11147,7 +11353,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (_valueSet[0] ? 1 : 0) + (_valueSet[1] ? 1 : 0);
 }
 
-- (BOOL)valueForKey:(BOOL)key value:(uint32_t *)value {
+- (BOOL)getUInt32:(uint32_t *)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (value) {
@@ -11174,7 +11380,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt32sUsingBlock:
     (void (^)(BOOL key, uint32_t value, BOOL *stop))block {
   BOOL stop = NO;
   if (_valueSet[0]) {
@@ -11235,7 +11441,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint32_t)value forKey:(BOOL)key {
+- (void)setUInt32:(uint32_t)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   _values[idx] = value;
   _valueSet[idx] = YES;
@@ -11244,7 +11450,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(BOOL)aKey {
+- (void)removeUInt32ForKey:(BOOL)aKey {
   _valueSet[aKey ? 1 : 0] = NO;
 }
 
@@ -11267,24 +11473,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt32s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int32_t)value
++ (instancetype)dictionaryWithInt32:(int32_t)value
                              forKey:(BOOL)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolInt32Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBBoolInt32Dictionary*)[self alloc] initWithInt32s:&value
                                                         forKeys:&key
                                                           count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int32_t [])values
++ (instancetype)dictionaryWithInt32s:(const int32_t [])values
                              forKeys:(const BOOL [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt32s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolInt32Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBBoolInt32Dictionary*)[self alloc] initWithInt32s:values
                                                         forKeys:keys
                                                           count:count] autorelease];
 }
@@ -11300,10 +11506,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int32_t [])values
+- (instancetype)initWithInt32s:(const int32_t [])values
                        forKeys:(const BOOL [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -11318,7 +11524,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBBoolInt32Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt32s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       for (int i = 0; i < 2; ++i) {
@@ -11334,7 +11540,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt32s:NULL forKeys:NULL count:0];
 }
 
 #if !defined(NS_BLOCK_ASSERTIONS)
@@ -11350,19 +11556,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolInt32Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolInt32Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolInt32Dictionary class]]) {
     return NO;
   }
-  if ((_valueSet[0] != other->_valueSet[0]) ||
-      (_valueSet[1] != other->_valueSet[1])) {
+  GPBBoolInt32Dictionary *otherDictionary = other;
+  if ((_valueSet[0] != otherDictionary->_valueSet[0]) ||
+      (_valueSet[1] != otherDictionary->_valueSet[1])) {
     return NO;
   }
-  if ((_valueSet[0] && (_values[0] != other->_values[0])) ||
-      (_valueSet[1] && (_values[1] != other->_values[1]))) {
+  if ((_valueSet[0] && (_values[0] != otherDictionary->_values[0])) ||
+      (_valueSet[1] && (_values[1] != otherDictionary->_values[1]))) {
     return NO;
   }
   return YES;
@@ -11388,7 +11595,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (_valueSet[0] ? 1 : 0) + (_valueSet[1] ? 1 : 0);
 }
 
-- (BOOL)valueForKey:(BOOL)key value:(int32_t *)value {
+- (BOOL)getInt32:(int32_t *)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (value) {
@@ -11415,7 +11622,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt32sUsingBlock:
     (void (^)(BOOL key, int32_t value, BOOL *stop))block {
   BOOL stop = NO;
   if (_valueSet[0]) {
@@ -11476,7 +11683,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int32_t)value forKey:(BOOL)key {
+- (void)setInt32:(int32_t)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   _values[idx] = value;
   _valueSet[idx] = YES;
@@ -11485,7 +11692,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(BOOL)aKey {
+- (void)removeInt32ForKey:(BOOL)aKey {
   _valueSet[aKey ? 1 : 0] = NO;
 }
 
@@ -11508,26 +11715,26 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithUInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(uint64_t)value
-                             forKey:(BOOL)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64:(uint64_t)value
+                              forKey:(BOOL)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolUInt64Dictionary*)[self alloc] initWithValues:&value
-                                                         forKeys:&key
-                                                           count:1] autorelease];
+  return [[(GPBBoolUInt64Dictionary*)[self alloc] initWithUInt64s:&value
+                                                          forKeys:&key
+                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const uint64_t [])values
-                             forKeys:(const BOOL [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithUInt64s:(const uint64_t [])values
+                              forKeys:(const BOOL [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithUInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolUInt64Dictionary*)[self alloc] initWithValues:values
-                                                         forKeys:keys
-                                                           count:count] autorelease];
+  return [[(GPBBoolUInt64Dictionary*)[self alloc] initWithUInt64s:values
+                                                          forKeys:keys
+                                                            count:count] autorelease];
 }
 
 + (instancetype)dictionaryWithDictionary:(GPBBoolUInt64Dictionary *)dictionary {
@@ -11541,12 +11748,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const uint64_t [])values
-                       forKeys:(const BOOL [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithUInt64s:(const uint64_t [])values
+                        forKeys:(const BOOL [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     for (NSUInteger i = 0; i < count; ++i) {
@@ -11559,7 +11766,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBBoolUInt64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithUInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       for (int i = 0; i < 2; ++i) {
@@ -11575,7 +11782,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithUInt64s:NULL forKeys:NULL count:0];
 }
 
 #if !defined(NS_BLOCK_ASSERTIONS)
@@ -11591,19 +11798,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolUInt64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolUInt64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolUInt64Dictionary class]]) {
     return NO;
   }
-  if ((_valueSet[0] != other->_valueSet[0]) ||
-      (_valueSet[1] != other->_valueSet[1])) {
+  GPBBoolUInt64Dictionary *otherDictionary = other;
+  if ((_valueSet[0] != otherDictionary->_valueSet[0]) ||
+      (_valueSet[1] != otherDictionary->_valueSet[1])) {
     return NO;
   }
-  if ((_valueSet[0] && (_values[0] != other->_values[0])) ||
-      (_valueSet[1] && (_values[1] != other->_values[1]))) {
+  if ((_valueSet[0] && (_values[0] != otherDictionary->_values[0])) ||
+      (_valueSet[1] && (_values[1] != otherDictionary->_values[1]))) {
     return NO;
   }
   return YES;
@@ -11629,7 +11837,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (_valueSet[0] ? 1 : 0) + (_valueSet[1] ? 1 : 0);
 }
 
-- (BOOL)valueForKey:(BOOL)key value:(uint64_t *)value {
+- (BOOL)getUInt64:(uint64_t *)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (value) {
@@ -11656,7 +11864,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndUInt64sUsingBlock:
     (void (^)(BOOL key, uint64_t value, BOOL *stop))block {
   BOOL stop = NO;
   if (_valueSet[0]) {
@@ -11717,7 +11925,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(uint64_t)value forKey:(BOOL)key {
+- (void)setUInt64:(uint64_t)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   _values[idx] = value;
   _valueSet[idx] = YES;
@@ -11726,7 +11934,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(BOOL)aKey {
+- (void)removeUInt64ForKey:(BOOL)aKey {
   _valueSet[aKey ? 1 : 0] = NO;
 }
 
@@ -11749,24 +11957,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithInt64s:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(int64_t)value
++ (instancetype)dictionaryWithInt64:(int64_t)value
                              forKey:(BOOL)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolInt64Dictionary*)[self alloc] initWithValues:&value
+  return [[(GPBBoolInt64Dictionary*)[self alloc] initWithInt64s:&value
                                                         forKeys:&key
                                                           count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const int64_t [])values
++ (instancetype)dictionaryWithInt64s:(const int64_t [])values
                              forKeys:(const BOOL [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithInt64s:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolInt64Dictionary*)[self alloc] initWithValues:values
+  return [[(GPBBoolInt64Dictionary*)[self alloc] initWithInt64s:values
                                                         forKeys:keys
                                                           count:count] autorelease];
 }
@@ -11782,10 +11990,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const int64_t [])values
+- (instancetype)initWithInt64s:(const int64_t [])values
                        forKeys:(const BOOL [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -11800,7 +12008,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBBoolInt64Dictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithInt64s:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       for (int i = 0; i < 2; ++i) {
@@ -11816,7 +12024,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithInt64s:NULL forKeys:NULL count:0];
 }
 
 #if !defined(NS_BLOCK_ASSERTIONS)
@@ -11832,19 +12040,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolInt64Dictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolInt64Dictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolInt64Dictionary class]]) {
     return NO;
   }
-  if ((_valueSet[0] != other->_valueSet[0]) ||
-      (_valueSet[1] != other->_valueSet[1])) {
+  GPBBoolInt64Dictionary *otherDictionary = other;
+  if ((_valueSet[0] != otherDictionary->_valueSet[0]) ||
+      (_valueSet[1] != otherDictionary->_valueSet[1])) {
     return NO;
   }
-  if ((_valueSet[0] && (_values[0] != other->_values[0])) ||
-      (_valueSet[1] && (_values[1] != other->_values[1]))) {
+  if ((_valueSet[0] && (_values[0] != otherDictionary->_values[0])) ||
+      (_valueSet[1] && (_values[1] != otherDictionary->_values[1]))) {
     return NO;
   }
   return YES;
@@ -11870,7 +12079,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (_valueSet[0] ? 1 : 0) + (_valueSet[1] ? 1 : 0);
 }
 
-- (BOOL)valueForKey:(BOOL)key value:(int64_t *)value {
+- (BOOL)getInt64:(int64_t *)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (value) {
@@ -11897,7 +12106,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndInt64sUsingBlock:
     (void (^)(BOOL key, int64_t value, BOOL *stop))block {
   BOOL stop = NO;
   if (_valueSet[0]) {
@@ -11958,7 +12167,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int64_t)value forKey:(BOOL)key {
+- (void)setInt64:(int64_t)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   _values[idx] = value;
   _valueSet[idx] = YES;
@@ -11967,7 +12176,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(BOOL)aKey {
+- (void)removeInt64ForKey:(BOOL)aKey {
   _valueSet[aKey ? 1 : 0] = NO;
 }
 
@@ -11990,26 +12199,26 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithBools:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(BOOL)value
-                             forKey:(BOOL)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBool:(BOOL)value
+                            forKey:(BOOL)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolBoolDictionary*)[self alloc] initWithValues:&value
-                                                       forKeys:&key
-                                                         count:1] autorelease];
+  return [[(GPBBoolBoolDictionary*)[self alloc] initWithBools:&value
+                                                      forKeys:&key
+                                                        count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const BOOL [])values
-                             forKeys:(const BOOL [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithBools:(const BOOL [])values
+                            forKeys:(const BOOL [])keys
+                              count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithBools:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolBoolDictionary*)[self alloc] initWithValues:values
-                                                       forKeys:keys
-                                                         count:count] autorelease];
+  return [[(GPBBoolBoolDictionary*)[self alloc] initWithBools:values
+                                                      forKeys:keys
+                                                        count:count] autorelease];
 }
 
 + (instancetype)dictionaryWithDictionary:(GPBBoolBoolDictionary *)dictionary {
@@ -12023,12 +12232,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const BOOL [])values
-                       forKeys:(const BOOL [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithBools:(const BOOL [])values
+                      forKeys:(const BOOL [])keys
+                        count:(NSUInteger)count {
   self = [super init];
   if (self) {
     for (NSUInteger i = 0; i < count; ++i) {
@@ -12041,7 +12250,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBBoolBoolDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithBools:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       for (int i = 0; i < 2; ++i) {
@@ -12057,7 +12266,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithBools:NULL forKeys:NULL count:0];
 }
 
 #if !defined(NS_BLOCK_ASSERTIONS)
@@ -12073,19 +12282,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolBoolDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolBoolDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolBoolDictionary class]]) {
     return NO;
   }
-  if ((_valueSet[0] != other->_valueSet[0]) ||
-      (_valueSet[1] != other->_valueSet[1])) {
+  GPBBoolBoolDictionary *otherDictionary = other;
+  if ((_valueSet[0] != otherDictionary->_valueSet[0]) ||
+      (_valueSet[1] != otherDictionary->_valueSet[1])) {
     return NO;
   }
-  if ((_valueSet[0] && (_values[0] != other->_values[0])) ||
-      (_valueSet[1] && (_values[1] != other->_values[1]))) {
+  if ((_valueSet[0] && (_values[0] != otherDictionary->_values[0])) ||
+      (_valueSet[1] && (_values[1] != otherDictionary->_values[1]))) {
     return NO;
   }
   return YES;
@@ -12111,7 +12321,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (_valueSet[0] ? 1 : 0) + (_valueSet[1] ? 1 : 0);
 }
 
-- (BOOL)valueForKey:(BOOL)key value:(BOOL *)value {
+- (BOOL)getBool:(BOOL *)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (value) {
@@ -12138,7 +12348,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndBoolsUsingBlock:
     (void (^)(BOOL key, BOOL value, BOOL *stop))block {
   BOOL stop = NO;
   if (_valueSet[0]) {
@@ -12199,7 +12409,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(BOOL)value forKey:(BOOL)key {
+- (void)setBool:(BOOL)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   _values[idx] = value;
   _valueSet[idx] = YES;
@@ -12208,7 +12418,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(BOOL)aKey {
+- (void)removeBoolForKey:(BOOL)aKey {
   _valueSet[aKey ? 1 : 0] = NO;
 }
 
@@ -12231,24 +12441,24 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithFloats:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(float)value
++ (instancetype)dictionaryWithFloat:(float)value
                              forKey:(BOOL)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolFloatDictionary*)[self alloc] initWithValues:&value
+  return [[(GPBBoolFloatDictionary*)[self alloc] initWithFloats:&value
                                                         forKeys:&key
                                                           count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const float [])values
++ (instancetype)dictionaryWithFloats:(const float [])values
                              forKeys:(const BOOL [])keys
                                count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
+  // Cast is needed so the compiler knows what class we are invoking initWithFloats:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolFloatDictionary*)[self alloc] initWithValues:values
+  return [[(GPBBoolFloatDictionary*)[self alloc] initWithFloats:values
                                                         forKeys:keys
                                                           count:count] autorelease];
 }
@@ -12264,10 +12474,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const float [])values
+- (instancetype)initWithFloats:(const float [])values
                        forKeys:(const BOOL [])keys
                          count:(NSUInteger)count {
   self = [super init];
@@ -12282,7 +12492,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBBoolFloatDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithFloats:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       for (int i = 0; i < 2; ++i) {
@@ -12298,7 +12508,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithFloats:NULL forKeys:NULL count:0];
 }
 
 #if !defined(NS_BLOCK_ASSERTIONS)
@@ -12314,19 +12524,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolFloatDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolFloatDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolFloatDictionary class]]) {
     return NO;
   }
-  if ((_valueSet[0] != other->_valueSet[0]) ||
-      (_valueSet[1] != other->_valueSet[1])) {
+  GPBBoolFloatDictionary *otherDictionary = other;
+  if ((_valueSet[0] != otherDictionary->_valueSet[0]) ||
+      (_valueSet[1] != otherDictionary->_valueSet[1])) {
     return NO;
   }
-  if ((_valueSet[0] && (_values[0] != other->_values[0])) ||
-      (_valueSet[1] && (_values[1] != other->_values[1]))) {
+  if ((_valueSet[0] && (_values[0] != otherDictionary->_values[0])) ||
+      (_valueSet[1] && (_values[1] != otherDictionary->_values[1]))) {
     return NO;
   }
   return YES;
@@ -12352,7 +12563,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (_valueSet[0] ? 1 : 0) + (_valueSet[1] ? 1 : 0);
 }
 
-- (BOOL)valueForKey:(BOOL)key value:(float *)value {
+- (BOOL)getFloat:(float *)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (value) {
@@ -12379,7 +12590,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndFloatsUsingBlock:
     (void (^)(BOOL key, float value, BOOL *stop))block {
   BOOL stop = NO;
   if (_valueSet[0]) {
@@ -12440,7 +12651,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(float)value forKey:(BOOL)key {
+- (void)setFloat:(float)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   _values[idx] = value;
   _valueSet[idx] = YES;
@@ -12449,7 +12660,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(BOOL)aKey {
+- (void)removeFloatForKey:(BOOL)aKey {
   _valueSet[aKey ? 1 : 0] = NO;
 }
 
@@ -12472,26 +12683,26 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 + (instancetype)dictionary {
-  return [[[self alloc] initWithValues:NULL forKeys:NULL count:0] autorelease];
+  return [[[self alloc] initWithDoubles:NULL forKeys:NULL count:0] autorelease];
 }
 
-+ (instancetype)dictionaryWithValue:(double)value
-                             forKey:(BOOL)key {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDouble:(double)value
+                              forKey:(BOOL)key {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolDoubleDictionary*)[self alloc] initWithValues:&value
-                                                         forKeys:&key
-                                                           count:1] autorelease];
+  return [[(GPBBoolDoubleDictionary*)[self alloc] initWithDoubles:&value
+                                                          forKeys:&key
+                                                            count:1] autorelease];
 }
 
-+ (instancetype)dictionaryWithValues:(const double [])values
-                             forKeys:(const BOOL [])keys
-                               count:(NSUInteger)count {
-  // Cast is needed so the compiler knows what class we are invoking initWithValues:forKeys:count:
++ (instancetype)dictionaryWithDoubles:(const double [])values
+                              forKeys:(const BOOL [])keys
+                                count:(NSUInteger)count {
+  // Cast is needed so the compiler knows what class we are invoking initWithDoubles:forKeys:count:
   // on to get the type correct.
-  return [[(GPBBoolDoubleDictionary*)[self alloc] initWithValues:values
-                                                         forKeys:keys
-                                                           count:count] autorelease];
+  return [[(GPBBoolDoubleDictionary*)[self alloc] initWithDoubles:values
+                                                          forKeys:keys
+                                                            count:count] autorelease];
 }
 
 + (instancetype)dictionaryWithDictionary:(GPBBoolDoubleDictionary *)dictionary {
@@ -12505,12 +12716,12 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)init {
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
-- (instancetype)initWithValues:(const double [])values
-                       forKeys:(const BOOL [])keys
-                         count:(NSUInteger)count {
+- (instancetype)initWithDoubles:(const double [])values
+                        forKeys:(const BOOL [])keys
+                          count:(NSUInteger)count {
   self = [super init];
   if (self) {
     for (NSUInteger i = 0; i < count; ++i) {
@@ -12523,7 +12734,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (instancetype)initWithDictionary:(GPBBoolDoubleDictionary *)dictionary {
-  self = [self initWithValues:NULL forKeys:NULL count:0];
+  self = [self initWithDoubles:NULL forKeys:NULL count:0];
   if (self) {
     if (dictionary) {
       for (int i = 0; i < 2; ++i) {
@@ -12539,7 +12750,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
 
 - (instancetype)initWithCapacity:(NSUInteger)numItems {
   #pragma unused(numItems)
-  return [self initWithValues:NULL forKeys:NULL count:0];
+  return [self initWithDoubles:NULL forKeys:NULL count:0];
 }
 
 #if !defined(NS_BLOCK_ASSERTIONS)
@@ -12555,19 +12766,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolDoubleDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolDoubleDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolDoubleDictionary class]]) {
     return NO;
   }
-  if ((_valueSet[0] != other->_valueSet[0]) ||
-      (_valueSet[1] != other->_valueSet[1])) {
+  GPBBoolDoubleDictionary *otherDictionary = other;
+  if ((_valueSet[0] != otherDictionary->_valueSet[0]) ||
+      (_valueSet[1] != otherDictionary->_valueSet[1])) {
     return NO;
   }
-  if ((_valueSet[0] && (_values[0] != other->_values[0])) ||
-      (_valueSet[1] && (_values[1] != other->_values[1]))) {
+  if ((_valueSet[0] && (_values[0] != otherDictionary->_values[0])) ||
+      (_valueSet[1] && (_values[1] != otherDictionary->_values[1]))) {
     return NO;
   }
   return YES;
@@ -12593,7 +12805,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (_valueSet[0] ? 1 : 0) + (_valueSet[1] ? 1 : 0);
 }
 
-- (BOOL)valueForKey:(BOOL)key value:(double *)value {
+- (BOOL)getDouble:(double *)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (value) {
@@ -12620,7 +12832,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndDoublesUsingBlock:
     (void (^)(BOOL key, double value, BOOL *stop))block {
   BOOL stop = NO;
   if (_valueSet[0]) {
@@ -12681,7 +12893,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(double)value forKey:(BOOL)key {
+- (void)setDouble:(double)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   _values[idx] = value;
   _valueSet[idx] = YES;
@@ -12690,7 +12902,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(BOOL)aKey {
+- (void)removeDoubleForKey:(BOOL)aKey {
   _valueSet[aKey ? 1 : 0] = NO;
 }
 
@@ -12754,6 +12966,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
   self = [super init];
   if (self) {
     for (NSUInteger i = 0; i < count; ++i) {
+      if (!objects[i]) {
+        [NSException raise:NSInvalidArgumentException
+                    format:@"Attempting to add nil object to a Dictionary"];
+      }
       int idx = keys[i] ? 1 : 0;
       [_values[idx] release];
       _values[idx] = (id)[objects[i] retain];
@@ -12791,19 +13007,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolObjectDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolObjectDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolObjectDictionary class]]) {
     return NO;
   }
-  if (((_values[0] != nil) != (other->_values[0] != nil)) ||
-      ((_values[1] != nil) != (other->_values[1] != nil))) {
+  GPBBoolObjectDictionary *otherDictionary = other;
+  if (((_values[0] != nil) != (otherDictionary->_values[0] != nil)) ||
+      ((_values[1] != nil) != (otherDictionary->_values[1] != nil))) {
     return NO;
   }
-  if (((_values[0] != nil) && (![_values[0] isEqual:other->_values[0]])) ||
-      ((_values[1] != nil) && (![_values[1] isEqual:other->_values[1]]))) {
+  if (((_values[0] != nil) && (![_values[0] isEqual:otherDictionary->_values[0]])) ||
+      ((_values[1] != nil) && (![_values[1] isEqual:otherDictionary->_values[1]]))) {
     return NO;
   }
   return YES;
@@ -12932,6 +13149,10 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 - (void)setObject:(id)object forKey:(BOOL)key {
+  if (!object) {
+    [NSException raise:NSInvalidArgumentException
+                format:@"Attempting to add nil object to a Dictionary"];
+  }
   int idx = (key ? 1 : 0);
   [_values[idx] release];
   _values[idx] = [object retain];
@@ -13077,19 +13298,20 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return [[GPBBoolEnumDictionary allocWithZone:zone] initWithDictionary:self];
 }
 
-- (BOOL)isEqual:(GPBBoolEnumDictionary *)other {
+- (BOOL)isEqual:(id)other {
   if (self == other) {
     return YES;
   }
   if (![other isKindOfClass:[GPBBoolEnumDictionary class]]) {
     return NO;
   }
-  if ((_valueSet[0] != other->_valueSet[0]) ||
-      (_valueSet[1] != other->_valueSet[1])) {
+  GPBBoolEnumDictionary *otherDictionary = other;
+  if ((_valueSet[0] != otherDictionary->_valueSet[0]) ||
+      (_valueSet[1] != otherDictionary->_valueSet[1])) {
     return NO;
   }
-  if ((_valueSet[0] && (_values[0] != other->_values[0])) ||
-      (_valueSet[1] && (_values[1] != other->_values[1]))) {
+  if ((_valueSet[0] && (_values[0] != otherDictionary->_values[0])) ||
+      (_valueSet[1] && (_values[1] != otherDictionary->_values[1]))) {
     return NO;
   }
   return YES;
@@ -13115,7 +13337,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return (_valueSet[0] ? 1 : 0) + (_valueSet[1] ? 1 : 0);
 }
 
-- (BOOL)valueForKey:(BOOL)key value:(int32_t*)value {
+- (BOOL)getEnum:(int32_t*)value forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (value) {
@@ -13130,7 +13352,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return NO;
 }
 
-- (BOOL)valueForKey:(BOOL)key rawValue:(int32_t*)rawValue {
+- (BOOL)getRawValue:(int32_t*)rawValue forKey:(BOOL)key {
   int idx = (key ? 1 : 0);
   if (_valueSet[idx]) {
     if (rawValue) {
@@ -13141,7 +13363,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   return NO;
 }
 
-- (void)enumerateKeysAndValuesUsingBlock:
+- (void)enumerateKeysAndRawValuesUsingBlock:
     (void (^)(BOOL key, int32_t value, BOOL *stop))block {
   BOOL stop = NO;
   if (_valueSet[0]) {
@@ -13152,7 +13374,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)enumerateKeysAndRawValuesUsingBlock:
+- (void)enumerateKeysAndEnumsUsingBlock:
     (void (^)(BOOL key, int32_t rawValue, BOOL *stop))block {
   BOOL stop = NO;
   GPBEnumValidationFunc func = _validationFunc;
@@ -13257,7 +13479,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)setValue:(int32_t)value forKey:(BOOL)key {
+- (void)setEnum:(int32_t)value forKey:(BOOL)key {
   if (!_validationFunc(value)) {
     [NSException raise:NSInvalidArgumentException
                 format:@"GPBBoolEnumDictionary: Attempt to set an unknown enum value (%d)",
@@ -13280,7 +13502,7 @@ void GPBDictionaryReadEntry(id mapDictionary,
   }
 }
 
-- (void)removeValueForKey:(BOOL)aKey {
+- (void)removeEnumForKey:(BOOL)aKey {
   _valueSet[aKey ? 1 : 0] = NO;
 }
 
@@ -13397,3 +13619,5 @@ void GPBDictionaryReadEntry(id mapDictionary,
 }
 
 @end
+
+#pragma clang diagnostic pop

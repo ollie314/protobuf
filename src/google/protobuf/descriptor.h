@@ -62,7 +62,6 @@
 #include <string>
 #include <vector>
 #include <google/protobuf/stubs/common.h>
-#include <google/protobuf/stubs/scoped_ptr.h>
 
 // TYPE_BOOL is defined in the MacOS's ConditionalMacros.h.
 #ifdef TYPE_BOOL
@@ -95,6 +94,7 @@ class MethodDescriptorProto;
 class FileDescriptorProto;
 class MessageOptions;
 class FieldOptions;
+class OneofOptions;
 class EnumOptions;
 class EnumValueOptions;
 class ServiceOptions;
@@ -126,6 +126,11 @@ class CommandLineInterface;
 namespace descriptor_unittest {
 class DescriptorTest;
 }  // namespace descriptor_unittest
+
+// Defined in printer.h
+namespace io {
+class Printer;
+}  // namespace io
 
 // NB, all indices are zero-based.
 struct SourceLocation {
@@ -358,6 +363,9 @@ class LIBPROTOBUF_EXPORT Descriptor {
 
   // Allows tests to test CopyTo(proto, true).
   friend class ::google::protobuf::descriptor_unittest::DescriptorTest;
+
+  // Allows access to GetLocationPath for annotations.
+  friend class ::google::protobuf::io::Printer;
 
   // Fill the json_name field of FieldDescriptorProto.
   void CopyJsonNameTo(DescriptorProto* proto) const;
@@ -644,6 +652,9 @@ class LIBPROTOBUF_EXPORT FieldDescriptor {
  private:
   typedef FieldOptions OptionsType;
 
+  // Allows access to GetLocationPath for annotations.
+  friend class ::google::protobuf::io::Printer;
+
   // Fill the json_name field of FieldDescriptorProto.
   void CopyJsonNameTo(FieldDescriptorProto* proto) const;
 
@@ -739,6 +750,8 @@ class LIBPROTOBUF_EXPORT OneofDescriptor {
   // .proto file.  Does not include extensions.
   const FieldDescriptor* field(int index) const;
 
+  const OneofOptions& options() const;
+
   // See Descriptor::CopyTo().
   void CopyTo(OneofDescriptorProto* proto) const;
 
@@ -756,6 +769,11 @@ class LIBPROTOBUF_EXPORT OneofDescriptor {
   bool GetSourceLocation(SourceLocation* out_location) const;
 
  private:
+  typedef OneofOptions OptionsType;
+
+  // Allows access to GetLocationPath for annotations.
+  friend class ::google::protobuf::io::Printer;
+
   // See Descriptor::DebugString().
   void DebugString(int depth, string* contents,
                    const DebugStringOptions& options) const;
@@ -770,6 +788,8 @@ class LIBPROTOBUF_EXPORT OneofDescriptor {
   bool is_extendable_;
   int field_count_;
   const FieldDescriptor** fields_;
+  const OneofOptions* options_;
+
   // IMPORTANT:  If you add a new field, make sure to search for all instances
   // of Allocate<OneofDescriptor>() and AllocateArray<OneofDescriptor>()
   // in descriptor.cc and update them to initialize the field.
@@ -845,6 +865,9 @@ class LIBPROTOBUF_EXPORT EnumDescriptor {
 
  private:
   typedef EnumOptions OptionsType;
+
+  // Allows access to GetLocationPath for annotations.
+  friend class ::google::protobuf::io::Printer;
 
   // Looks up a value by number.  If the value does not exist, dynamically
   // creates a new EnumValueDescriptor for that value, assuming that it was
@@ -942,6 +965,9 @@ class LIBPROTOBUF_EXPORT EnumValueDescriptor {
  private:
   typedef EnumValueOptions OptionsType;
 
+  // Allows access to GetLocationPath for annotations.
+  friend class ::google::protobuf::io::Printer;
+
   // See Descriptor::DebugString().
   void DebugString(int depth, string *contents,
                    const DebugStringOptions& options) const;
@@ -1017,6 +1043,9 @@ class LIBPROTOBUF_EXPORT ServiceDescriptor {
 
  private:
   typedef ServiceOptions OptionsType;
+
+  // Allows access to GetLocationPath for annotations.
+  friend class ::google::protobuf::io::Printer;
 
   // See Descriptor::DebugString().
   void DebugString(string *contents, const DebugStringOptions& options) const;
@@ -1095,6 +1124,9 @@ class LIBPROTOBUF_EXPORT MethodDescriptor {
 
  private:
   typedef MethodOptions OptionsType;
+
+  // Allows access to GetLocationPath for annotations.
+  friend class ::google::protobuf::io::Printer;
 
   // See Descriptor::DebugString().
   void DebugString(int depth, string *contents,
@@ -1645,7 +1677,7 @@ PROTOBUF_DEFINE_ARRAY_ACCESSOR(Descriptor, reserved_range,
                                const Descriptor::ReservedRange*)
 PROTOBUF_DEFINE_ACCESSOR(Descriptor, reserved_name_count, int)
 
-PROTOBUF_DEFINE_OPTIONS_ACCESSOR(Descriptor, MessageOptions);
+PROTOBUF_DEFINE_OPTIONS_ACCESSOR(Descriptor, MessageOptions)
 PROTOBUF_DEFINE_ACCESSOR(Descriptor, is_placeholder, bool)
 
 PROTOBUF_DEFINE_STRING_ACCESSOR(FieldDescriptor, name)
@@ -1682,6 +1714,7 @@ PROTOBUF_DEFINE_STRING_ACCESSOR(OneofDescriptor, name)
 PROTOBUF_DEFINE_STRING_ACCESSOR(OneofDescriptor, full_name)
 PROTOBUF_DEFINE_ACCESSOR(OneofDescriptor, containing_type, const Descriptor*)
 PROTOBUF_DEFINE_ACCESSOR(OneofDescriptor, field_count, int)
+PROTOBUF_DEFINE_OPTIONS_ACCESSOR(OneofDescriptor, OneofOptions)
 
 PROTOBUF_DEFINE_STRING_ACCESSOR(EnumDescriptor, name)
 PROTOBUF_DEFINE_STRING_ACCESSOR(EnumDescriptor, full_name)
@@ -1690,7 +1723,7 @@ PROTOBUF_DEFINE_ACCESSOR(EnumDescriptor, containing_type, const Descriptor*)
 PROTOBUF_DEFINE_ACCESSOR(EnumDescriptor, value_count, int)
 PROTOBUF_DEFINE_ARRAY_ACCESSOR(EnumDescriptor, value,
                                const EnumValueDescriptor*)
-PROTOBUF_DEFINE_OPTIONS_ACCESSOR(EnumDescriptor, EnumOptions);
+PROTOBUF_DEFINE_OPTIONS_ACCESSOR(EnumDescriptor, EnumOptions)
 PROTOBUF_DEFINE_ACCESSOR(EnumDescriptor, is_placeholder, bool)
 
 PROTOBUF_DEFINE_STRING_ACCESSOR(EnumValueDescriptor, name)
@@ -1705,14 +1738,14 @@ PROTOBUF_DEFINE_ACCESSOR(ServiceDescriptor, file, const FileDescriptor*)
 PROTOBUF_DEFINE_ACCESSOR(ServiceDescriptor, method_count, int)
 PROTOBUF_DEFINE_ARRAY_ACCESSOR(ServiceDescriptor, method,
                                const MethodDescriptor*)
-PROTOBUF_DEFINE_OPTIONS_ACCESSOR(ServiceDescriptor, ServiceOptions);
+PROTOBUF_DEFINE_OPTIONS_ACCESSOR(ServiceDescriptor, ServiceOptions)
 
 PROTOBUF_DEFINE_STRING_ACCESSOR(MethodDescriptor, name)
 PROTOBUF_DEFINE_STRING_ACCESSOR(MethodDescriptor, full_name)
 PROTOBUF_DEFINE_ACCESSOR(MethodDescriptor, service, const ServiceDescriptor*)
 PROTOBUF_DEFINE_ACCESSOR(MethodDescriptor, input_type, const Descriptor*)
 PROTOBUF_DEFINE_ACCESSOR(MethodDescriptor, output_type, const Descriptor*)
-PROTOBUF_DEFINE_OPTIONS_ACCESSOR(MethodDescriptor, MethodOptions);
+PROTOBUF_DEFINE_OPTIONS_ACCESSOR(MethodDescriptor, MethodOptions)
 PROTOBUF_DEFINE_ACCESSOR(MethodDescriptor, client_streaming, bool)
 PROTOBUF_DEFINE_ACCESSOR(MethodDescriptor, server_streaming, bool)
 
@@ -1726,7 +1759,7 @@ PROTOBUF_DEFINE_ACCESSOR(FileDescriptor, message_type_count, int)
 PROTOBUF_DEFINE_ACCESSOR(FileDescriptor, enum_type_count, int)
 PROTOBUF_DEFINE_ACCESSOR(FileDescriptor, service_count, int)
 PROTOBUF_DEFINE_ACCESSOR(FileDescriptor, extension_count, int)
-PROTOBUF_DEFINE_OPTIONS_ACCESSOR(FileDescriptor, FileOptions);
+PROTOBUF_DEFINE_OPTIONS_ACCESSOR(FileDescriptor, FileOptions)
 PROTOBUF_DEFINE_ACCESSOR(FileDescriptor, is_placeholder, bool)
 
 PROTOBUF_DEFINE_ARRAY_ACCESSOR(FileDescriptor, message_type, const Descriptor*)

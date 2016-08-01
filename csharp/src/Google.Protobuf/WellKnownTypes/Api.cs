@@ -9,73 +9,73 @@ using pbr = global::Google.Protobuf.Reflection;
 using scg = global::System.Collections.Generic;
 namespace Google.Protobuf.WellKnownTypes {
 
-  namespace Proto {
+  /// <summary>Holder for reflection information generated from google/protobuf/api.proto</summary>
+  public static partial class ApiReflection {
 
-    /// <summary>Holder for reflection information generated from google/protobuf/api.proto</summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-    public static partial class Api {
-
-      #region Descriptor
-      /// <summary>File descriptor for google/protobuf/api.proto</summary>
-      public static pbr::FileDescriptor Descriptor {
-        get { return descriptor; }
-      }
-      private static pbr::FileDescriptor descriptor;
-
-      static Api() {
-        byte[] descriptorData = global::System.Convert.FromBase64String(
-            string.Concat(
-              "Chlnb29nbGUvcHJvdG9idWYvYXBpLnByb3RvEg9nb29nbGUucHJvdG9idWYa",
-              "JGdvb2dsZS9wcm90b2J1Zi9zb3VyY2VfY29udGV4dC5wcm90bxoaZ29vZ2xl",
-              "L3Byb3RvYnVmL3R5cGUucHJvdG8igQIKA0FwaRIMCgRuYW1lGAEgASgJEigK",
-              "B21ldGhvZHMYAiADKAsyFy5nb29nbGUucHJvdG9idWYuTWV0aG9kEigKB29w",
-              "dGlvbnMYAyADKAsyFy5nb29nbGUucHJvdG9idWYuT3B0aW9uEg8KB3ZlcnNp",
-              "b24YBCABKAkSNgoOc291cmNlX2NvbnRleHQYBSABKAsyHi5nb29nbGUucHJv",
-              "dG9idWYuU291cmNlQ29udGV4dBImCgZtaXhpbnMYBiADKAsyFi5nb29nbGUu",
-              "cHJvdG9idWYuTWl4aW4SJwoGc3ludGF4GAcgASgOMhcuZ29vZ2xlLnByb3Rv",
-              "YnVmLlN5bnRheCLVAQoGTWV0aG9kEgwKBG5hbWUYASABKAkSGAoQcmVxdWVz",
-              "dF90eXBlX3VybBgCIAEoCRIZChFyZXF1ZXN0X3N0cmVhbWluZxgDIAEoCBIZ",
-              "ChFyZXNwb25zZV90eXBlX3VybBgEIAEoCRIaChJyZXNwb25zZV9zdHJlYW1p",
-              "bmcYBSABKAgSKAoHb3B0aW9ucxgGIAMoCzIXLmdvb2dsZS5wcm90b2J1Zi5P",
-              "cHRpb24SJwoGc3ludGF4GAcgASgOMhcuZ29vZ2xlLnByb3RvYnVmLlN5bnRh",
-              "eCIjCgVNaXhpbhIMCgRuYW1lGAEgASgJEgwKBHJvb3QYAiABKAlCSwoTY29t",
-              "Lmdvb2dsZS5wcm90b2J1ZkIIQXBpUHJvdG9QAaABAaICA0dQQqoCHkdvb2ds",
-              "ZS5Qcm90b2J1Zi5XZWxsS25vd25UeXBlc2IGcHJvdG8z"));
-        descriptor = pbr::FileDescriptor.InternalBuildGeneratedFileFrom(descriptorData,
-            new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.Proto.SourceContext.Descriptor, global::Google.Protobuf.WellKnownTypes.Proto.Type.Descriptor, },
-            new pbr::GeneratedCodeInfo(null, new pbr::GeneratedCodeInfo[] {
-              new pbr::GeneratedCodeInfo(typeof(global::Google.Protobuf.WellKnownTypes.Api), new[]{ "Name", "Methods", "Options", "Version", "SourceContext", "Mixins", "Syntax" }, null, null, null),
-              new pbr::GeneratedCodeInfo(typeof(global::Google.Protobuf.WellKnownTypes.Method), new[]{ "Name", "RequestTypeUrl", "RequestStreaming", "ResponseTypeUrl", "ResponseStreaming", "Options", "Syntax" }, null, null, null),
-              new pbr::GeneratedCodeInfo(typeof(global::Google.Protobuf.WellKnownTypes.Mixin), new[]{ "Name", "Root" }, null, null, null)
-            }));
-      }
-      #endregion
-
+    #region Descriptor
+    /// <summary>File descriptor for google/protobuf/api.proto</summary>
+    public static pbr::FileDescriptor Descriptor {
+      get { return descriptor; }
     }
+    private static pbr::FileDescriptor descriptor;
+
+    static ApiReflection() {
+      byte[] descriptorData = global::System.Convert.FromBase64String(
+          string.Concat(
+            "Chlnb29nbGUvcHJvdG9idWYvYXBpLnByb3RvEg9nb29nbGUucHJvdG9idWYa",
+            "JGdvb2dsZS9wcm90b2J1Zi9zb3VyY2VfY29udGV4dC5wcm90bxoaZ29vZ2xl",
+            "L3Byb3RvYnVmL3R5cGUucHJvdG8igQIKA0FwaRIMCgRuYW1lGAEgASgJEigK",
+            "B21ldGhvZHMYAiADKAsyFy5nb29nbGUucHJvdG9idWYuTWV0aG9kEigKB29w",
+            "dGlvbnMYAyADKAsyFy5nb29nbGUucHJvdG9idWYuT3B0aW9uEg8KB3ZlcnNp",
+            "b24YBCABKAkSNgoOc291cmNlX2NvbnRleHQYBSABKAsyHi5nb29nbGUucHJv",
+            "dG9idWYuU291cmNlQ29udGV4dBImCgZtaXhpbnMYBiADKAsyFi5nb29nbGUu",
+            "cHJvdG9idWYuTWl4aW4SJwoGc3ludGF4GAcgASgOMhcuZ29vZ2xlLnByb3Rv",
+            "YnVmLlN5bnRheCLVAQoGTWV0aG9kEgwKBG5hbWUYASABKAkSGAoQcmVxdWVz",
+            "dF90eXBlX3VybBgCIAEoCRIZChFyZXF1ZXN0X3N0cmVhbWluZxgDIAEoCBIZ",
+            "ChFyZXNwb25zZV90eXBlX3VybBgEIAEoCRIaChJyZXNwb25zZV9zdHJlYW1p",
+            "bmcYBSABKAgSKAoHb3B0aW9ucxgGIAMoCzIXLmdvb2dsZS5wcm90b2J1Zi5P",
+            "cHRpb24SJwoGc3ludGF4GAcgASgOMhcuZ29vZ2xlLnByb3RvYnVmLlN5bnRh",
+            "eCIjCgVNaXhpbhIMCgRuYW1lGAEgASgJEgwKBHJvb3QYAiABKAlCSwoTY29t",
+            "Lmdvb2dsZS5wcm90b2J1ZkIIQXBpUHJvdG9QAaABAaICA0dQQqoCHkdvb2ds",
+            "ZS5Qcm90b2J1Zi5XZWxsS25vd25UeXBlc2IGcHJvdG8z"));
+      descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
+          new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.SourceContextReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.TypeReflection.Descriptor, },
+          new pbr::GeneratedClrTypeInfo(null, new pbr::GeneratedClrTypeInfo[] {
+            new pbr::GeneratedClrTypeInfo(typeof(global::Google.Protobuf.WellKnownTypes.Api), global::Google.Protobuf.WellKnownTypes.Api.Parser, new[]{ "Name", "Methods", "Options", "Version", "SourceContext", "Mixins", "Syntax" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Google.Protobuf.WellKnownTypes.Method), global::Google.Protobuf.WellKnownTypes.Method.Parser, new[]{ "Name", "RequestTypeUrl", "RequestStreaming", "ResponseTypeUrl", "ResponseStreaming", "Options", "Syntax" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::Google.Protobuf.WellKnownTypes.Mixin), global::Google.Protobuf.WellKnownTypes.Mixin.Parser, new[]{ "Name", "Root" }, null, null, null)
+          }));
+    }
+    #endregion
+
   }
   #region Messages
   /// <summary>
   ///  Api is a light-weight descriptor for a protocol buffer service.
   /// </summary>
-  [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
   public sealed partial class Api : pb::IMessage<Api> {
     private static readonly pb::MessageParser<Api> _parser = new pb::MessageParser<Api>(() => new Api());
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pb::MessageParser<Api> Parser { get { return _parser; } }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Google.Protobuf.WellKnownTypes.Proto.Api.Descriptor.MessageTypes[0]; }
+      get { return global::Google.Protobuf.WellKnownTypes.ApiReflection.Descriptor.MessageTypes[0]; }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Api() {
       OnConstruction();
     }
 
     partial void OnConstruction();
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Api(Api other) : this() {
       name_ = other.name_;
       methods_ = other.methods_.Clone();
@@ -86,6 +86,7 @@ namespace Google.Protobuf.WellKnownTypes {
       syntax_ = other.syntax_;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Api Clone() {
       return new Api(this);
     }
@@ -97,10 +98,11 @@ namespace Google.Protobuf.WellKnownTypes {
     ///  The fully qualified name of this api, including package name
     ///  followed by the api's simple name.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Name {
       get { return name_; }
       set {
-        name_ = pb::Preconditions.CheckNotNull(value, "value");
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
 
@@ -112,6 +114,7 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  The methods of this api, in unspecified order.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<global::Google.Protobuf.WellKnownTypes.Method> Methods {
       get { return methods_; }
     }
@@ -124,6 +127,7 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  Any metadata attached to the API.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<global::Google.Protobuf.WellKnownTypes.Option> Options {
       get { return options_; }
     }
@@ -139,22 +143,25 @@ namespace Google.Protobuf.WellKnownTypes {
     ///  outlined below. If the field is not empty, the version in the
     ///  package name will be verified to be consistent with what is
     ///  provided here.
+    ///
     ///  The versioning schema uses [semantic
     ///  versioning](http://semver.org) where the major version number
     ///  indicates a breaking change and the minor version an additive,
     ///  non-breaking change. Both version numbers are signals to users
     ///  what to expect from different versions, and should be carefully
     ///  chosen based on the product plan.
+    ///
     ///  The major version is also reflected in the package name of the
     ///  API, which must end in `v&lt;major-version>`, as in
     ///  `google.feature.v1`. For major versions 0 and 1, the suffix can
     ///  be omitted. Zero major versions must only be used for
     ///  experimental, none-GA apis.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Version {
       get { return version_; }
       set {
-        version_ = pb::Preconditions.CheckNotNull(value, "value");
+        version_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
 
@@ -165,6 +172,7 @@ namespace Google.Protobuf.WellKnownTypes {
     ///  Source context for the protocol buffer service represented by this
     ///  message.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Google.Protobuf.WellKnownTypes.SourceContext SourceContext {
       get { return sourceContext_; }
       set {
@@ -180,16 +188,18 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  Included APIs. See [Mixin][].
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<global::Google.Protobuf.WellKnownTypes.Mixin> Mixins {
       get { return mixins_; }
     }
 
     /// <summary>Field number for the "syntax" field.</summary>
     public const int SyntaxFieldNumber = 7;
-    private global::Google.Protobuf.WellKnownTypes.Syntax syntax_ = global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2;
+    private global::Google.Protobuf.WellKnownTypes.Syntax syntax_ = 0;
     /// <summary>
     ///  The source syntax of the service.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Google.Protobuf.WellKnownTypes.Syntax Syntax {
       get { return syntax_; }
       set {
@@ -197,10 +207,12 @@ namespace Google.Protobuf.WellKnownTypes {
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as Api);
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public bool Equals(Api other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -218,6 +230,7 @@ namespace Google.Protobuf.WellKnownTypes {
       return true;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override int GetHashCode() {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
@@ -226,14 +239,16 @@ namespace Google.Protobuf.WellKnownTypes {
       if (Version.Length != 0) hash ^= Version.GetHashCode();
       if (sourceContext_ != null) hash ^= SourceContext.GetHashCode();
       hash ^= mixins_.GetHashCode();
-      if (Syntax != global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2) hash ^= Syntax.GetHashCode();
+      if (Syntax != 0) hash ^= Syntax.GetHashCode();
       return hash;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override string ToString() {
-      return pb::JsonFormatter.Default.Format(this);
+      return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
       if (Name.Length != 0) {
         output.WriteRawTag(10);
@@ -250,12 +265,13 @@ namespace Google.Protobuf.WellKnownTypes {
         output.WriteMessage(SourceContext);
       }
       mixins_.WriteTo(output, _repeated_mixins_codec);
-      if (Syntax != global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2) {
+      if (Syntax != 0) {
         output.WriteRawTag(56);
         output.WriteEnum((int) Syntax);
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
       if (Name.Length != 0) {
@@ -270,12 +286,13 @@ namespace Google.Protobuf.WellKnownTypes {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(SourceContext);
       }
       size += mixins_.CalculateSize(_repeated_mixins_codec);
-      if (Syntax != global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2) {
+      if (Syntax != 0) {
         size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Syntax);
       }
       return size;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(Api other) {
       if (other == null) {
         return;
@@ -295,11 +312,12 @@ namespace Google.Protobuf.WellKnownTypes {
         SourceContext.MergeFrom(other.SourceContext);
       }
       mixins_.Add(other.mixins_);
-      if (other.Syntax != global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2) {
+      if (other.Syntax != 0) {
         Syntax = other.Syntax;
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -347,25 +365,29 @@ namespace Google.Protobuf.WellKnownTypes {
   /// <summary>
   ///  Method represents a method of an api.
   /// </summary>
-  [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
   public sealed partial class Method : pb::IMessage<Method> {
     private static readonly pb::MessageParser<Method> _parser = new pb::MessageParser<Method>(() => new Method());
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pb::MessageParser<Method> Parser { get { return _parser; } }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Google.Protobuf.WellKnownTypes.Proto.Api.Descriptor.MessageTypes[1]; }
+      get { return global::Google.Protobuf.WellKnownTypes.ApiReflection.Descriptor.MessageTypes[1]; }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Method() {
       OnConstruction();
     }
 
     partial void OnConstruction();
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Method(Method other) : this() {
       name_ = other.name_;
       requestTypeUrl_ = other.requestTypeUrl_;
@@ -376,6 +398,7 @@ namespace Google.Protobuf.WellKnownTypes {
       syntax_ = other.syntax_;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Method Clone() {
       return new Method(this);
     }
@@ -386,10 +409,11 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  The simple name of this method.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Name {
       get { return name_; }
       set {
-        name_ = pb::Preconditions.CheckNotNull(value, "value");
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
 
@@ -399,10 +423,11 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  A URL of the input message type.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string RequestTypeUrl {
       get { return requestTypeUrl_; }
       set {
-        requestTypeUrl_ = pb::Preconditions.CheckNotNull(value, "value");
+        requestTypeUrl_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
 
@@ -412,6 +437,7 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  If true, the request is streamed.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public bool RequestStreaming {
       get { return requestStreaming_; }
       set {
@@ -425,10 +451,11 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  The URL of the output message type.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string ResponseTypeUrl {
       get { return responseTypeUrl_; }
       set {
-        responseTypeUrl_ = pb::Preconditions.CheckNotNull(value, "value");
+        responseTypeUrl_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
 
@@ -438,6 +465,7 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  If true, the response is streamed.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public bool ResponseStreaming {
       get { return responseStreaming_; }
       set {
@@ -453,16 +481,18 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  Any metadata attached to the method.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public pbc::RepeatedField<global::Google.Protobuf.WellKnownTypes.Option> Options {
       get { return options_; }
     }
 
     /// <summary>Field number for the "syntax" field.</summary>
     public const int SyntaxFieldNumber = 7;
-    private global::Google.Protobuf.WellKnownTypes.Syntax syntax_ = global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2;
+    private global::Google.Protobuf.WellKnownTypes.Syntax syntax_ = 0;
     /// <summary>
     ///  The source syntax of this method.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public global::Google.Protobuf.WellKnownTypes.Syntax Syntax {
       get { return syntax_; }
       set {
@@ -470,10 +500,12 @@ namespace Google.Protobuf.WellKnownTypes {
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as Method);
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public bool Equals(Method other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -491,6 +523,7 @@ namespace Google.Protobuf.WellKnownTypes {
       return true;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override int GetHashCode() {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
@@ -499,14 +532,16 @@ namespace Google.Protobuf.WellKnownTypes {
       if (ResponseTypeUrl.Length != 0) hash ^= ResponseTypeUrl.GetHashCode();
       if (ResponseStreaming != false) hash ^= ResponseStreaming.GetHashCode();
       hash ^= options_.GetHashCode();
-      if (Syntax != global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2) hash ^= Syntax.GetHashCode();
+      if (Syntax != 0) hash ^= Syntax.GetHashCode();
       return hash;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override string ToString() {
-      return pb::JsonFormatter.Default.Format(this);
+      return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
       if (Name.Length != 0) {
         output.WriteRawTag(10);
@@ -529,12 +564,13 @@ namespace Google.Protobuf.WellKnownTypes {
         output.WriteBool(ResponseStreaming);
       }
       options_.WriteTo(output, _repeated_options_codec);
-      if (Syntax != global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2) {
+      if (Syntax != 0) {
         output.WriteRawTag(56);
         output.WriteEnum((int) Syntax);
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
       if (Name.Length != 0) {
@@ -553,12 +589,13 @@ namespace Google.Protobuf.WellKnownTypes {
         size += 1 + 1;
       }
       size += options_.CalculateSize(_repeated_options_codec);
-      if (Syntax != global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2) {
+      if (Syntax != 0) {
         size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Syntax);
       }
       return size;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(Method other) {
       if (other == null) {
         return;
@@ -579,11 +616,12 @@ namespace Google.Protobuf.WellKnownTypes {
         ResponseStreaming = other.ResponseStreaming;
       }
       options_.Add(other.options_);
-      if (other.Syntax != global::Google.Protobuf.WellKnownTypes.Syntax.SYNTAX_PROTO2) {
+      if (other.Syntax != 0) {
         Syntax = other.Syntax;
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -629,16 +667,21 @@ namespace Google.Protobuf.WellKnownTypes {
   ///  Declares an API to be included in this API. The including API must
   ///  redeclare all the methods from the included API, but documentation
   ///  and options are inherited as follows:
+  ///
   ///  - If after comment and whitespace stripping, the documentation
   ///    string of the redeclared method is empty, it will be inherited
   ///    from the original method.
+  ///
   ///  - Each annotation belonging to the service config (http,
   ///    visibility) which is not set in the redeclared method will be
   ///    inherited.
+  ///
   ///  - If an http annotation is inherited, the path pattern will be
   ///    modified as follows. Any version prefix will be replaced by the
   ///    version of the including API plus the [root][] path if specified.
+  ///
   ///  Example of a simple mixin:
+  ///
   ///      package google.acl.v1;
   ///      service AccessControl {
   ///        // Get the underlying ACL object.
@@ -646,25 +689,30 @@ namespace Google.Protobuf.WellKnownTypes {
   ///          option (google.api.http).get = "/v1/{resource=**}:getAcl";
   ///        }
   ///      }
+  ///
   ///      package google.storage.v2;
   ///      service Storage {
-  ///        // (-- see AccessControl.GetAcl --)
   ///        rpc GetAcl(GetAclRequest) returns (Acl);
+  ///
   ///        // Get a data record.
   ///        rpc GetData(GetDataRequest) returns (Data) {
   ///          option (google.api.http).get = "/v2/{resource=**}";
   ///        }
   ///      }
+  ///
   ///  Example of a mixin configuration:
+  ///
   ///      apis:
   ///      - name: google.storage.v2.Storage
   ///        mixins:
   ///        - name: google.acl.v1.AccessControl
+  ///
   ///  The mixin construct implies that all methods in `AccessControl` are
   ///  also declared with same name and request/response types in
   ///  `Storage`. A documentation generator or annotation processor will
   ///  see the effective `Storage.GetAcl` method after inherting
   ///  documentation and annotations as follows:
+  ///
   ///      service Storage {
   ///        // Get the underlying ACL object.
   ///        rpc GetAcl(GetAclRequest) returns (Acl) {
@@ -672,15 +720,20 @@ namespace Google.Protobuf.WellKnownTypes {
   ///        }
   ///        ...
   ///      }
+  ///
   ///  Note how the version in the path pattern changed from `v1` to `v2`.
+  ///
   ///  If the `root` field in the mixin is specified, it should be a
   ///  relative path under which inherited HTTP paths are placed. Example:
+  ///
   ///      apis:
   ///      - name: google.storage.v2.Storage
   ///        mixins:
   ///        - name: google.acl.v1.AccessControl
   ///          root: acls
+  ///
   ///  This implies the following inherited HTTP annotation:
+  ///
   ///      service Storage {
   ///        // Get the underlying ACL object.
   ///        rpc GetAcl(GetAclRequest) returns (Acl) {
@@ -689,30 +742,35 @@ namespace Google.Protobuf.WellKnownTypes {
   ///        ...
   ///      }
   /// </summary>
-  [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
   public sealed partial class Mixin : pb::IMessage<Mixin> {
     private static readonly pb::MessageParser<Mixin> _parser = new pb::MessageParser<Mixin>(() => new Mixin());
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pb::MessageParser<Mixin> Parser { get { return _parser; } }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::Google.Protobuf.WellKnownTypes.Proto.Api.Descriptor.MessageTypes[2]; }
+      get { return global::Google.Protobuf.WellKnownTypes.ApiReflection.Descriptor.MessageTypes[2]; }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Mixin() {
       OnConstruction();
     }
 
     partial void OnConstruction();
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Mixin(Mixin other) : this() {
       name_ = other.name_;
       root_ = other.root_;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public Mixin Clone() {
       return new Mixin(this);
     }
@@ -723,10 +781,11 @@ namespace Google.Protobuf.WellKnownTypes {
     /// <summary>
     ///  The fully qualified name of the API which is included.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Name {
       get { return name_; }
       set {
-        name_ = pb::Preconditions.CheckNotNull(value, "value");
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
 
@@ -737,17 +796,20 @@ namespace Google.Protobuf.WellKnownTypes {
     ///  If non-empty specifies a path under which inherited HTTP paths
     ///  are rooted.
     /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Root {
       get { return root_; }
       set {
-        root_ = pb::Preconditions.CheckNotNull(value, "value");
+        root_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override bool Equals(object other) {
       return Equals(other as Mixin);
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public bool Equals(Mixin other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -760,6 +822,7 @@ namespace Google.Protobuf.WellKnownTypes {
       return true;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override int GetHashCode() {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
@@ -767,10 +830,12 @@ namespace Google.Protobuf.WellKnownTypes {
       return hash;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public override string ToString() {
-      return pb::JsonFormatter.Default.Format(this);
+      return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void WriteTo(pb::CodedOutputStream output) {
       if (Name.Length != 0) {
         output.WriteRawTag(10);
@@ -782,6 +847,7 @@ namespace Google.Protobuf.WellKnownTypes {
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public int CalculateSize() {
       int size = 0;
       if (Name.Length != 0) {
@@ -793,6 +859,7 @@ namespace Google.Protobuf.WellKnownTypes {
       return size;
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(Mixin other) {
       if (other == null) {
         return;
@@ -805,6 +872,7 @@ namespace Google.Protobuf.WellKnownTypes {
       }
     }
 
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public void MergeFrom(pb::CodedInputStream input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {

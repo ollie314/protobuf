@@ -64,6 +64,10 @@ class EnumValue;
 namespace protobuf {
 namespace util {
 namespace converter {
+
+// Size of "type.googleapis.com"
+static const int64 kTypeUrlSize = 19;
+
 // Finds the tech option identified by option_name. Parses the boolean value and
 // returns it.
 // When the option with the given name is not found, default_value is returned.
@@ -126,6 +130,11 @@ const google::protobuf::Option* FindOptionOrNull(
 // object. Returns NULL if none found.
 const google::protobuf::Field* FindFieldInTypeOrNull(
     const google::protobuf::Type* type, StringPiece field_name);
+
+// Similar to FindFieldInTypeOrNull, but this looks up fields with given
+// json_name.
+const google::protobuf::Field* FindJsonFieldInTypeOrNull(
+    const google::protobuf::Type* type, StringPiece json_name);
 
 // Finds and returns the EnumValue identified by enum_name in the passed tech
 // Enum object. Returns NULL if none found.
