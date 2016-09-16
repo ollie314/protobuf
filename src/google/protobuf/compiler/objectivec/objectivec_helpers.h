@@ -28,6 +28,8 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+// Helper functions for generating ObjectiveC code.
+
 #ifndef GOOGLE_PROTOBUF_COMPILER_OBJECTIVEC_HELPERS_H__
 #define GOOGLE_PROTOBUF_COMPILER_OBJECTIVEC_HELPERS_H__
 
@@ -67,6 +69,9 @@ bool IsRetainedName(const string& name);
 // handling under ARC.
 bool IsInitName(const string& name);
 
+// Gets the objc_class_prefix.
+string FileClassPrefix(const FileDescriptor* file);
+
 // Gets the path of the file we're going to generate (sans the .pb.h
 // extension).  The path will be dependent on the objectivec package
 // declared in the proto package.
@@ -83,6 +88,7 @@ string FileClassName(const FileDescriptor* file);
 // These return the fully-qualified class name corresponding to the given
 // descriptor.
 string ClassName(const Descriptor* descriptor);
+string ClassName(const Descriptor* descriptor, string* out_suffix_added);
 string EnumName(const EnumDescriptor* descriptor);
 
 // Returns the fully-qualified name of the enum value corresponding to the
@@ -137,6 +143,12 @@ enum ObjectiveCType {
   OBJECTIVECTYPE_MESSAGE
 };
 
+enum FlagType {
+  FLAGTYPE_DESCRIPTOR_INITIALIZATION,
+  FLAGTYPE_EXTENSION,
+  FLAGTYPE_FIELD
+};
+
 template<class TDescriptor>
 string GetOptionalDeprecatedAttribute(const TDescriptor* descriptor, bool preSpace = true, bool postNewline = false) {
   if (descriptor->options().deprecated()) {
@@ -168,7 +180,7 @@ string GPBGenericValueFieldName(const FieldDescriptor* field);
 string DefaultValue(const FieldDescriptor* field);
 bool HasNonZeroDefaultValue(const FieldDescriptor* field);
 
-string BuildFlagsString(const vector<string>& strings);
+string BuildFlagsString(const FlagType type, const vector<string>& strings);
 
 // Builds HeaderDoc/appledoc style comments out of the comments in the .proto
 // file.
